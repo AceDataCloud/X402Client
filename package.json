@@ -1,0 +1,48 @@
+{
+  "name": "@acedatacloud/x402-client",
+  "version": "0.1.0",
+  "description": "X402 payment protocol client for AceDataCloud APIs",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./solana": {
+      "import": "./dist/solana.js",
+      "types": "./dist/solana.d.ts"
+    },
+    "./evm": {
+      "import": "./dist/evm.js",
+      "types": "./dist/evm.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@solana/web3.js": "^1.90.0"
+  },
+  "peerDependenciesMeta": {
+    "@solana/web3.js": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AceDataCloud/X402Client"
+  }
+}
