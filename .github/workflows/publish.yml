@@ -1,6 +1,169 @@
 name: Publish To npm
 
 on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Compute CalVer version
+        id: version
+        # Version format: YYYY.M.D[.N] (no leading zeros, matches AceDataCloud MCPs).
+        # Query the npm registry for today's highest published build number and bump
+        # it, so multiple pushes per day get unique versions without manual editing.
+        env:
+          PKG_NAME: ${{ env.PKG_NAME }}
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
+          echo "Package: $PKG_NAME"
+          echo "Date prefix (UTC): $DATE_PREFIX"
+
+          VERSION=$(PKG_NAME="$PKG_NAME" DATE_PREFIX="$DATE_PREFIX" node -e "
+            const https = require('https');
+            const name = process.env.PKG_NAME;
+            const prefix = process.env.DATE_PREFIX;
+            const url = 'https://registry.npmjs.org/' + name.replace('@', '%40');
+            https.get(url, (res) => {
+              let body = '';
+              res.on('data', (c) => (body += c));
+              res.on('end', () => {
+                if (res.statusCode === 404) {
+                  console.log(prefix);
+                  return;
+                }
+                let versions = [];
+                try {
+                  const data = JSON.parse(body);
+                  versions = Object.keys(data.versions || {});
+                } catch (e) {
+                  console.log(prefix);
+                  return;
+                }
+                const same = versions.filter((v) => v === prefix || v.startsWith(prefix + '.'));
+                if (same.length === 0) {
+                  console.log(prefix);
+                  return;
+                }
+                let maxN = 0;
+                for (const v of same) {
+                  if (v === prefix) {
+                    if (maxN < 1) maxN = 1;
+                    continue;
+                  }
+                  const tail = v.slice(prefix.length + 1);
+                  const n = Number.parseInt(tail, 10);
+                  if (Number.isFinite(n) && n >= maxN) maxN = n + 1;
+                }
+                console.log(prefix + '.' + maxN);
+              });
+            }).on('error', () => console.log(prefix));
+          ")
+
+          echo "Resolved version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Write version into package.json
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="$VERSION" node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          grep -m1 '"version"' package.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Validate publish tarball
+        run: npm pack --json --dry-run
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: |
+            package.json
+            package-lock.json
+            dist/
+            README.md
+            LICENSE
+          if-no-files-found: warn
+
+  publish-npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@acedatacloud/x402-client/v/${{ needs.build.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish
+        # prepublishOnly in package.json would re-run set-date-version.mjs + build;
+        # we already built, so skip lifecycle scripts.
+        run: npm publish --provenance --access public --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  create-release:
+    name: Create GitHub Release
+    if: github.event_name == 'push'
+    needs: [build, publish-npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ needs.build.outputs.version }}" \
+            --title "v${{ needs.build.outputs.version }}" \
+            --generate-notes \
+            --repo '${{ github.repository }}' || echo "Release already exists, skipping"
+name: Publish To npm
+
+on:
   release:
     types:
       - published
