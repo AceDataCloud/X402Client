@@ -1,5 +1,295 @@
 # @acedatacloud/x402-client
 
+> X402 payment protocol client for AceDataCloud APIs.
+> Pay per request with USDC — **no API key, no account, no session**.
+
+Every [AceDataCloud](https://platform.acedata.cloud) API that costs money (chat completions, image generation, video generation, music generation, web search, …) now speaks the [x402 protocol](https://x402.org). This client wraps the full flow so you can call them as if they were free endpoints and let your wallet pay on the fly.
+
+- 🟦 **Base** — USDC (ERC-20) via EIP-3009 `transferWithAuthorization`
+- 🟪 **Solana** — USDC (SPL) via signed transfer
+- 🟨 **SKALE** — USDC (bridged) via EIP-3009
+
+All three networks settle through our own production facilitator at **`https://facilitator.acedata.cloud`** ([source](https://github.com/AceDataCloud/FacilitatorX402)).
+
+---
+
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Setup](#setup)
+- [Running the real end-to-end tests](#running-the-real-end-to-end-tests)
+- [Dynamic pricing regression](#dynamic-pricing-regression)
+- [Proof of real on-chain settlement](#proof-of-real-on-chain-settlement)
+- [Configuring other APIs](#configuring-other-apis)
+- [Release flow (CalVer)](#release-flow-calver)
+
+---
+
+## How it works
+
+```
+┌─────────┐    1. POST /openai/chat/completions     ┌──────────────────────┐
+│         │──────────(no Bearer, no X-Payment)────▶│                      │
+│         │                                         │  api.acedata.cloud   │
+│         │◀───── 2. 402 Payment Required ──────────│  (Kong → Gateway)    │
+│ Client  │      { accepts: [{ network, payTo,      │                      │
+│ (you)   │          maxAmountRequired, asset }] }  └──────────┬───────────┘
+│         │                                                    │
+│         │                                                    │ 3a. /verify
+│         │                                                    ▼
+│         │     4. POST /openai/chat/completions    ┌──────────────────────┐
+│         │────── ( X-Payment: base64(envelope) )──▶│ facilitator.acedata  │
+│         │                                         │        .cloud        │
+│         │◀───── 5. 200 OK + API response ─────────│ (FacilitatorX402 —   │
+└─────────┘                                         │  self-hosted,        │
+                                                    │  EVM + Solana)       │
+                                                    └──────────┬───────────┘
+                                                               │ 3b. /settle
+                                                               ▼
+                                                        ⛓  on-chain USDC tx
+```
+
+**Step 1.** Client sends the request normally — no auth header.
+**Step 2.** Gateway evaluates the JsonLogic cost rule for the endpoint + payload, converts Credits → atomic USDC via `X402_CREDITS_TO_USDC_RATE = 0.095215`, returns a `402` with an `accepts` list describing exactly which network, payTo address, asset contract, and amount to pay.
+**Step 3a.** Client picks a network its wallet supports, signs a typed envelope (EIP-712 `TransferWithAuthorization` on EVM chains, or an SPL transfer transaction on Solana), base64-encodes it, and puts it in `X-Payment`.
+**Step 4.** Gateway calls our facilitator `/verify` to check signature/nonce/amount/validity, then — **only if the upstream API call succeeds** — calls `/settle` to broadcast the on-chain transaction. This two-phase design means failed calls never charge you.
+**Step 5.** Gateway returns the normal API response; the on-chain tx hash is recorded in the `ApiUsage` record's `metadata.x402_tx`.
+
+**Why this design is safe**
+
+- Price is **fully server-authoritative**: the client never hardcodes amounts; it signs exactly what the 402 advertised.
+- Settlement is **post-success**: if the upstream API returns 5xx or fails, the facilitator never broadcasts the tx — no on-chain charge.
+- Nonces are stored facilitator-side, so the same signed envelope cannot be replayed.
+
+---
+
+## Install
+
+```bash
+npm install @acedatacloud/x402-client
+# extra peers depending on the chain(s) you use:
+npm install ethers            # Base / SKALE
+npm install @solana/web3.js   # Solana
+```
+
+The package auto-publishes on every push to `main` with a CalVer version (`YYYY.M.D[.N]`).
+
+---
+
+## Quick start
+
+### Base or SKALE (EVM)
+
+```ts
+import { createX402Client } from '@acedatacloud/x402-client';
+
+const client = createX402Client({
+  baseURL: 'https://api.acedata.cloud',
+  network: 'base',                  // or 'skale'
+  evmProvider: window.ethereum,     // any EIP-1193 provider works
+  evmAddress: '0xYourAddress...',
+});
+
+const result = await client.post('/openai/chat/completions', {
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
+  max_tokens: 10,
+});
+
+console.log(result.status);        // 200
+console.log(result.paid);          // true
+console.log(result.data.choices);  // the chat response
+```
+
+### Solana
+
+```ts
+import { createX402Client } from '@acedatacloud/x402-client';
+
+const client = createX402Client({
+  baseURL: 'https://api.acedata.cloud',
+  network: 'solana',
+  solanaWallet: phantomWallet,   // any wallet adapter with signTransaction()
+});
+
+const result = await client.post('/nano-banana/images', {
+  model: 'nano-banana-2',
+  prompt: 'a yellow banana on a white background',
+  size: '1x1',
+});
+```
+
+---
+
+## Setup
+
+1. **Fund a wallet with USDC** on the network you want to use:
+   - Base — [USDC on Base](https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
+   - Solana — [USDC on Solana](https://explorer.solana.com/address/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v)
+   - SKALE — bridged USDC on the SKALE `base` chain
+2. **Install the package** as shown above.
+3. **Pass a wallet/provider** that can sign EIP-712 (EVM) or a transaction (Solana). Any of the following work on EVM: MetaMask, Rabby, Coinbase Wallet, WalletConnect, viem's local account, a raw `ethers.Wallet`.
+4. **Call the endpoint** — that's it. The client handles the 402 loop, signing, retry, and final parse.
+
+> **Low-level signing (advanced)**
+>
+> If you need to produce the payment envelope yourself (e.g. in an agent framework), `signEVMPayment` and `signSolanaPayment` are exported and return exactly the base64-encoded `X-Payment` payload.
+
+---
+
+## Running the real end-to-end tests
+
+This repo includes live, on-chain smoke tests. They require a **funded wallet** (a few cents of USDC is plenty).
+
+```bash
+git clone https://github.com/AceDataCloud/X402Client.git
+cd X402Client
+npm install
+
+# Base — EVM private key
+export BASE_TEST_PRIVATE_KEY=0x...
+node --experimental-strip-types scripts/test-real-e2e.ts
+
+# Solana — base58-encoded secret key
+export SOLANA_TEST_PRIVATE_KEY=...
+node --experimental-strip-types scripts/test-solana-e2e.ts
+
+# SKALE — EVM private key with funded bridged USDC
+export SKALE_BASE_PRIVATE_KEY=0x...
+node --experimental-strip-types scripts/test-skale-e2e.ts
+```
+
+Each script:
+
+1. Sends `POST /openai/chat/completions` with no auth.
+2. Parses the returned `402`.
+3. Signs the payment envelope.
+4. Retries with `X-Payment`.
+5. Prints the trace ID, chain tx hash, and the final chat response.
+
+### What a successful run looks like (Base, trimmed)
+
+```
+→ POST https://api.acedata.cloud/openai/chat/completions
+← 402 Payment Required
+  accepts[0] network=base payTo=0x4d2f... maxAmountRequired=95215 (0.095215 USDC)
+✓ signed EIP-712 TransferWithAuthorization
+→ POST (with X-Payment)
+← 200 OK
+  x-trace-id: b60e7f0d-5baf-403f-999a-323f3ffeaa38
+  x402_tx:    0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec
+  reply:      "Hello there friend!"
+```
+
+---
+
+## Dynamic pricing regression
+
+`scripts/test-api-billing-scenarios.ts` runs **multiple APIs with different payloads** and verifies the advertised 402 amount exactly matches `floor(credits × 0.095215 × 1e6)`, then asserts an `ApiUsage` record with the on-chain tx hash lands in our logging pipeline.
+
+```bash
+export X402B_BASE_PAYER_PRIVATE_KEY=0x...   # Base wallet with a few cents of USDC
+node --experimental-strip-types scripts/test-api-billing-scenarios.ts
+```
+
+Sample output (`2026-04-19`):
+
+| Scenario                  | Endpoint              | Payload               | Credits | Advertised atomic USDC | Match | HTTP |
+| ------------------------- | --------------------- | --------------------- | ------- | ---------------------- | ----- | ---- |
+| nano-banana default       | `/nano-banana/images` | `model=nano-banana`   | 0.14    | 13 330                 | ✅     | 200  |
+| nano-banana-2             | `/nano-banana/images` | `model=nano-banana-2` | 0.28    | 26 660                 | ✅     | 200  |
+| midjourney fast (default) | `/midjourney/imagine` | *(no mode)*           | 0.27    | 25 708                 | ✅     | 200  |
+| midjourney turbo          | `/midjourney/imagine` | `mode=turbo`          | 0.54    | 51 416                 | ✅     | 200  |
+
+Every price came from the server (no client-side math) and matched our local Credits × rate formula to the atomic unit. **Dynamic pricing across different APIs and different payloads is fully operational.**
+
+---
+
+## Proof of real on-chain settlement
+
+All transactions below were produced by running the scripts in this repo against `https://api.acedata.cloud` on `2026-04-19`. Click any hash to see it on the explorer:
+
+### Base — `test-chat-payment-scenarios.ts`
+
+- trace `b60e7f0d-5baf-403f-999a-323f3ffeaa38`
+- tx [`0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec`](https://basescan.org/tx/0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec)
+
+### Base — `test-api-billing-scenarios.ts` (4 scenarios → 4 real txs)
+
+| API & payload            | Credits | Tx hash                                                                                                                                                             |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| nano-banana              | 0.14    | [`0x54783c69c6e5ac33690944584e1dca416f8f0615abc4bb248d7cbac9cde821de`](https://basescan.org/tx/0x54783c69c6e5ac33690944584e1dca416f8f0615abc4bb248d7cbac9cde821de) |
+| nano-banana-2            | 0.28    | [`0x2102788ced25109cd0d0928b85c11badc92e059460ebb93a7a541dfe01b25f09`](https://basescan.org/tx/0x2102788ced25109cd0d0928b85c11badc92e059460ebb93a7a541dfe01b25f09) |
+| midjourney imagine fast  | 0.27    | [`0x04ba94936a2a215b5ff27be32d2c92b45b273ca2e0f4d4f118eae993c31e315b`](https://basescan.org/tx/0x04ba94936a2a215b5ff27be32d2c92b45b273ca2e0f4d4f118eae993c31e315b) |
+| midjourney imagine turbo | 0.54    | [`0x375fc6dc84c1838efb3c46fead13319ed939871fc356c8a00b10f06203bd19cd`](https://basescan.org/tx/0x375fc6dc84c1838efb3c46fead13319ed939871fc356c8a00b10f06203bd19cd) |
+
+### Solana — `test-solana-e2e.ts`
+
+- trace `b9f2bc74-2594-48b1-aca5-1bd6a5052319`
+- tx [`3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr`](https://explorer.solana.com/tx/3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr?cluster=mainnet-beta)
+
+### SKALE — `test-skale-e2e.ts`
+
+- trace `c2448a00-678d-4279-bb43-4a56c6bdd6c7`
+- tx [`0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1`](https://skale-base-explorer.skalenodes.com/tx/0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1)
+
+All three chains are live. All settlements flow through our own facilitator at `https://facilitator.acedata.cloud`.
+
+---
+
+## Configuring other APIs
+
+Every x402-enabled AceDataCloud endpoint uses the **same** client configuration — only the path and body change:
+
+```ts
+// chat
+await client.post('/openai/chat/completions', { model, messages, max_tokens });
+
+// image
+await client.post('/nano-banana/images',      { model, prompt, size });
+await client.post('/midjourney/imagine',      { prompt, mode });
+await client.post('/flux/images',             { model, prompt });
+
+// video
+await client.post('/luma/videos',             { model, prompt });
+await client.post('/sora/videos',             { model, prompt });
+
+// music
+await client.post('/suno/audios',             { model, prompt });
+
+// search
+await client.post('/serp/google-web-search',  { q });
+```
+
+You can preview any endpoint's price without paying by sending the request once without `X-Payment` and inspecting the returned `accepts[0].maxAmountRequired`.
+
+At the time of writing, **121 of 122 public APIs have x402 pricing configured** — the only exception is the free `/fish/voices` listing.
+
+---
+
+## Release flow (CalVer)
+
+This repo publishes on every push to `main`:
+
+1. `.github/workflows/publish.yml` builds, computes today's version via CalVer (`YYYY.M.D[.N]`), patches `package.json`, runs `npm publish --provenance --access public`, and creates a matching GitHub Release.
+2. The `version` field committed in `package.json` is a placeholder — the real number is stamped at publish time.
+
+If you need a manual publish:
+
+```bash
+npm run version:date      # stamps today's date
+npm publish --access public
+```
+
+---
+
+## License
+
+MIT © AceDataCloud
+# @acedatacloud/x402-client
+
 X402 payment protocol client for AceDataCloud APIs. It wraps the standard `402 Payment Required` flow:
 
 1. send the API request
