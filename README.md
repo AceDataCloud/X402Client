@@ -290,34 +290,122 @@ npm publish --access public
 MIT © AceDataCloud
 # @acedatacloud/x402-client
 
-X402 payment protocol client for AceDataCloud APIs. It wraps the standard `402 Payment Required` flow:
+X402 payment protocol client for AceDataCloud APIs. It is designed to
+plug into [`@acedatacloud/sdk`](https://github.com/AceDataCloud/SDK) —
+the official SDK does all the API work, and this package only
+contributes the part the SDK can't do by itself: signing an `X-Payment`
+header when the server returns `402 Payment Required`.
 
-1. send the API request
-2. parse the returned payment requirement
-3. sign with the configured wallet
-4. retry with `X-Payment`
-
-Currently verified live against `https://api.acedata.cloud/openai/chat/completions` on `base`, `solana`, and `skale`.
+Currently verified live on `base`, `solana`, and `skale` against
+`https://api.acedata.cloud`.
 
 ## Install
 
-After the first npm release:
-
 ```bash
-npm install @acedatacloud/x402-client
+npm install @acedatacloud/sdk @acedatacloud/x402-client
 # Solana support:
 npm install @solana/web3.js
 ```
 
-If `npm install` still returns `404`, the package has not been released to npm yet. In that case, use the GitHub source temporarily:
+If the npm package has not been released yet, you can install directly
+from GitHub:
 
 ```bash
 npm install github:AceDataCloud/X402Client
 ```
 
-## Usage
+## Recommended Usage: Plug Into the SDK
+
+The SDK already knows how to call every AceDataCloud endpoint
+(`openai.chat`, `images`, `audio`, `video`, …). To pay for those
+calls with x402 instead of a Bearer token, just pass a
+`paymentHandler` produced by this package:
+
+### EVM (Base / SKALE)
+
+```ts
+import { AceDataCloud } from '@acedatacloud/sdk';
+import { createX402PaymentHandler } from '@acedatacloud/x402-client';
+
+const client = new AceDataCloud({
+  // No apiToken — per-request on-chain payment.
+  paymentHandler: createX402PaymentHandler({
+    network: 'base',               // or 'skale'
+    evmProvider: window.ethereum,
+    evmAddress: '0xYourAddress...',
+  }),
+});
+
+const res = await client.openai.chat.completions.create({
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
+  max_tokens: 10,
+});
+console.log(res.choices[0].message.content);
+```
 
 ### Solana
+
+```ts
+import { AceDataCloud } from '@acedatacloud/sdk';
+import { createX402PaymentHandler } from '@acedatacloud/x402-client';
+
+const client = new AceDataCloud({
+  paymentHandler: createX402PaymentHandler({
+    network: 'solana',
+    solanaWallet: phantomWallet,
+  }),
+});
+
+const task = await client.images.generate({ prompt: 'a sunset' });
+const result = await task.wait();
+```
+
+On every request the SDK first sends the call unauthenticated. If the
+server returns `402`, it passes the `accepts` list to the handler,
+which signs and returns the `X-Payment` header. The SDK retries once
+with that header. Task polling, streaming, retries, and error mapping
+all keep working — this is a one-line swap from Bearer auth.
+
+### Bootstrapping from env
+
+A typical Node process picks up its wallet from environment:
+
+```ts
+import 'dotenv/config';
+import { JsonRpcProvider, Wallet } from 'ethers';
+import { AceDataCloud } from '@acedatacloud/sdk';
+import { createX402PaymentHandler } from '@acedatacloud/x402-client';
+
+const wallet = new Wallet(process.env.EVM_PRIVATE_KEY!, new JsonRpcProvider(process.env.BASE_RPC));
+
+const client = new AceDataCloud({
+  paymentHandler: createX402PaymentHandler({
+    network: 'base',
+    // Any EIP-1193-compatible provider works.
+    evmProvider: {
+      request: async ({ method, params }) => {
+        if (method === 'eth_signTypedData_v4') {
+          const [, typed] = params as [string, string];
+          return wallet.signTypedData(
+            JSON.parse(typed).domain,
+            JSON.parse(typed).types,
+            JSON.parse(typed).message,
+          );
+        }
+        throw new Error(`unsupported: ${method}`);
+      },
+    },
+    evmAddress: wallet.address,
+  }),
+});
+```
+
+## Low-Level Client (No SDK)
+
+If you don't want to use the SDK and just need to send a single
+x402-authenticated request, the package also exposes a stand-alone
+`createX402Client` that wraps `fetch`:
 
 ```ts
 import { createX402Client } from '@acedatacloud/x402-client';
@@ -333,32 +421,14 @@ const result = await client.post('/openai/chat/completions', {
   messages: [{ role: 'user', content: 'Say hi in 3 words' }],
   max_tokens: 10,
 });
-
-console.log(result.status);
-console.log(result.paid);
-console.log(result.data);
 ```
 
-### Base / SKALE
+This exists mainly for quick experiments and the low-level e2e
+scripts. For production integrations, prefer the SDK path above — you
+get task polling, SSE streaming, retries, typed errors, and coverage
+for every AceDataCloud endpoint for free.
 
-```ts
-import { createX402Client } from '@acedatacloud/x402-client';
-
-const client = createX402Client({
-  baseURL: 'https://api.acedata.cloud',
-  network: 'base', // or 'skale'
-  evmProvider: window.ethereum,
-  evmAddress: '0xYourAddress...',
-});
-
-const result = await client.post('/openai/chat/completions', {
-  model: 'gpt-4o-mini',
-  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
-  max_tokens: 10,
-});
-```
-
-### Low-level signing
+## Low-level signing
 
 ```ts
 import { signSolanaPayment, signEVMPayment } from '@acedatacloud/x402-client';
@@ -418,6 +488,15 @@ const result = await client.post('/suno/audios', {
 ```
 
 If an endpoint does **not** return `402`, it is not currently using x402 payment flow and should be called with its normal auth path instead.
+
+## Python
+
+There is currently no Python x402 signer. The Python SDK
+(`acedatacloud`) already exposes the same `payment_handler` hook as
+the TypeScript SDK — any callable that returns
+`{"headers": {"X-Payment": "<base64>"}}` works. A Python port of the
+signing logic in this package is tracked as future work; contributions
+are welcome.
 
 ## Live Verification
 

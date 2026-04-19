@@ -10,6 +10,10 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./sdk": {
+      "import": "./dist/sdkAdapter.js",
+      "types": "./dist/sdkAdapter.d.ts"
+    },
     "./solana": {
       "import": "./dist/solana.js",
       "types": "./dist/solana.d.ts"
