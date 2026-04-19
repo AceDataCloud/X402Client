@@ -63,7 +63,7 @@ export async function signEVMPayment(
   const payload: EVMPayload = { authorization, signature };
 
   return {
-    x402Version: 1,
+    x402Version: 2,
     scheme: requirements.scheme || 'exact',
     network: requirements.network || 'base',
     payload,

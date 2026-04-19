@@ -39,7 +39,7 @@ export interface X402PaymentEnvelope {
   payload: SolanaPayload | EVMPayload;
 }
 
-/** Solana payload: just the on-chain transaction signature. */
+/** Solana payload in wallet-fee-payer mode: just the on-chain transaction signature. */
 export interface SolanaPayload {
   signature: string;
 }
@@ -62,6 +62,7 @@ export interface EVMAuthorization {
 /** Wallet adapter interface for Solana. */
 export interface SolanaWalletAdapter {
   publicKey: { toBase58(): string; toString(): string };
+  /** Wallet sends the transaction and returns the submitted signature. */
   signAndSendTransaction(tx: unknown): Promise<string | { signature: string }>;
 }
 

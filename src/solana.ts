@@ -10,10 +10,18 @@ import type { PaymentRequirement, SolanaPayload, SolanaWalletAdapter, X402Paymen
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 
-function findATA(owner: string, mint: string): string {
-  // Lazy-load @solana/web3.js to keep it optional
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { PublicKey } = require('@solana/web3.js') as typeof import('@solana/web3.js');
+async function loadWeb3() {
+  return import('@solana/web3.js');
+}
+
+function getPublicKeyString(wallet: SolanaWalletAdapter): string {
+  return typeof wallet.publicKey.toBase58 === 'function'
+    ? wallet.publicKey.toBase58()
+    : wallet.publicKey.toString();
+}
+
+async function findATA(owner: string, mint: string): Promise<string> {
+  const { PublicKey } = await loadWeb3();
   const [ata] = PublicKey.findProgramAddressSync(
     [new PublicKey(owner).toBytes(), new PublicKey(TOKEN_PROGRAM_ID).toBytes(), new PublicKey(mint).toBytes()],
     new PublicKey(ATA_PROGRAM_ID)
@@ -44,7 +52,7 @@ export async function signSolanaPayment(
     TransactionInstruction,
     ComputeBudgetProgram,
     Connection,
-  } = require('@solana/web3.js') as typeof import('@solana/web3.js');
+  } = await loadWeb3();
 
   const payTo = requirements.payTo;
   const mint = requirements.asset;
@@ -53,9 +61,9 @@ export async function signSolanaPayment(
   const computeUnitLimit = requirements.extra?.computeUnitLimit ?? 0;
   const computeUnitPrice = requirements.extra?.computeUnitPriceMicroLamports ?? 0;
 
-  const payerAddress = wallet.publicKey.toBase58();
-  const sourceATA = findATA(payerAddress, mint);
-  const destATA = findATA(payTo, mint);
+  const payerAddress = getPublicKeyString(wallet);
+  const sourceATA = await findATA(payerAddress, mint);
+  const destATA = await findATA(payTo, mint);
 
   const tx = new Transaction();
 
@@ -94,7 +102,7 @@ export async function signSolanaPayment(
   const payload: SolanaPayload = { signature };
 
   return {
-    x402Version: 1,
+    x402Version: 2,
     scheme: requirements.scheme || 'exact',
     network: requirements.network || 'solana',
     payload,
