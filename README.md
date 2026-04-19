@@ -36,15 +36,33 @@ console.log(result.data);    // API response
 console.log(result.paid);    // true if 402→payment→retry occurred
 ```
 
-### Base / SKALE (EVM)
+### Base (EVM)
 
 ```typescript
 import { createX402Client } from '@acedatacloud/x402-client';
 
 const client = createX402Client({
   baseURL: 'https://api.acedata.cloud',
-  network: 'base', // or 'skale'
+  network: 'base',
   evmProvider: window.ethereum,         // any EIP-1193 provider
+  evmAddress: '0xYourAddress...',
+});
+
+const result = await client.post('/openai/chat/completions', {
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
+  max_tokens: 10,
+});
+```
+
+### SKALE
+
+```typescript
+import { createSKALEClient } from '@acedatacloud/x402-client';
+
+const client = createSKALEClient({
+  baseURL: 'https://api.acedata.cloud',
+  evmProvider: window.ethereum,
   evmAddress: '0xYourAddress...',
 });
 
@@ -59,6 +77,7 @@ const result = await client.post('/openai/chat/completions', {
 
 ```typescript
 import { signSolanaPayment, signEVMPayment } from '@acedatacloud/x402-client';
+import { signSKALEPayment } from '@acedatacloud/x402-client';
 
 // Sign without the auto-retry wrapper
 const envelope = await signSolanaPayment(paymentRequirement, wallet);

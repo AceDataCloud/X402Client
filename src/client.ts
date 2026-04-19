@@ -34,7 +34,7 @@ export function createX402Client(options: X402ClientOptions) {
       if (!solanaWallet) throw new Error('solanaWallet required for Solana network');
       return signSolanaPayment(requirement, solanaWallet);
     }
-    // EVM networks: base, skale, etc.
+    // EVM networks share the same signing flow.
     if (!evmProvider || !evmAddress) throw new Error('evmProvider and evmAddress required for EVM network');
     return signEVMPayment(requirement, evmProvider, evmAddress);
   }

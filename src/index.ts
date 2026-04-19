@@ -2,6 +2,7 @@ export { createX402Client } from './client.js';
 export type { X402Client } from './client.js';
 export { signSolanaPayment } from './solana.js';
 export { signEVMPayment } from './evm.js';
+export { createSKALEClient, signSKALEPayment } from './skale.js';
 export type {
   PaymentRequirement,
   PaymentRequiredResponse,
@@ -14,3 +15,4 @@ export type {
   EVMPayload,
   EVMAuthorization,
 } from './types.js';
+export type { SKALEClientOptions } from './skale.js';
