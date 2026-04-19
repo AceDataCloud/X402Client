@@ -1,50 +1,63 @@
 # @acedatacloud/x402-client
 
-X402 payment protocol client for AceDataCloud APIs. Automatically handles `402 Payment Required` → wallet signing → retry.
+X402 payment protocol client for AceDataCloud APIs. It wraps the standard `402 Payment Required` flow:
 
-Currently verified against AceDataCloud's `openai/chat/completions` path with `base`, `solana`, and `skale`.
+1. send the API request
+2. parse the returned payment requirement
+3. sign with the configured wallet
+4. retry with `X-Payment`
+
+Currently verified live against `https://api.acedata.cloud/openai/chat/completions` on `base`, `solana`, and `skale`.
 
 ## Install
 
+After the first npm release:
+
 ```bash
 npm install @acedatacloud/x402-client
-# Solana support (optional):
+# Solana support:
 npm install @solana/web3.js
+```
+
+If `npm install` still returns `404`, the package has not been released to npm yet. In that case, use the GitHub source temporarily:
+
+```bash
+npm install github:AceDataCloud/X402Client
 ```
 
 ## Usage
 
 ### Solana
 
-```typescript
+```ts
 import { createX402Client } from '@acedatacloud/x402-client';
 
 const client = createX402Client({
   baseURL: 'https://api.acedata.cloud',
   network: 'solana',
-  solanaWallet: phantomWallet, // wallet-fee-payer mode: must support signAndSendTransaction
+  solanaWallet: phantomWallet,
 });
 
-// Automatically handles 402 → sign USDC transfer → retry
 const result = await client.post('/openai/chat/completions', {
   model: 'gpt-4o-mini',
   messages: [{ role: 'user', content: 'Say hi in 3 words' }],
   max_tokens: 10,
 });
 
-console.log(result.data);    // API response
-console.log(result.paid);    // true if 402→payment→retry occurred
+console.log(result.status);
+console.log(result.paid);
+console.log(result.data);
 ```
 
-### Base / SKALE (EVM)
+### Base / SKALE
 
-```typescript
+```ts
 import { createX402Client } from '@acedatacloud/x402-client';
 
 const client = createX402Client({
   baseURL: 'https://api.acedata.cloud',
   network: 'base', // or 'skale'
-  evmProvider: window.ethereum,         // any EIP-1193 provider
+  evmProvider: window.ethereum,
   evmAddress: '0xYourAddress...',
 });
 
@@ -57,21 +70,110 @@ const result = await client.post('/openai/chat/completions', {
 
 ### Low-level signing
 
-```typescript
+```ts
 import { signSolanaPayment, signEVMPayment } from '@acedatacloud/x402-client';
 
-// Sign without the auto-retry wrapper
 const envelope = await signSolanaPayment(paymentRequirement, wallet);
 const header = btoa(JSON.stringify(envelope));
-// Use header in your own HTTP client
 ```
 
-## How it works
+## Pricing For Other APIs
 
-1. Client sends API request (no Bearer token)
-2. Server returns `402` with `{ accepts: [{ network, maxAmountRequired, payTo, asset, ... }] }`
-3. Client picks the requirement matching the configured `network`
-4. **Solana**: builds SPL `TransferChecked` tx → wallet `signAndSendTransaction` → encodes `{ signature }`
-5. **EVM**: builds EIP-712 `TransferWithAuthorization` → wallet `eth_signTypedData_v4` → encodes `{ authorization, signature }`
-6. Client retries the original request with `X-Payment: <base64 encoded envelope>`
-7. Server verifies + settles payment → returns API result
+The client does **not** hardcode AceDataCloud prices.
+
+For any x402-enabled API, the server returns the real charge in the first `402` response:
+
+```json
+{
+  "accepts": [
+    {
+      "network": "base",
+      "maxAmountRequired": "95215",
+      "payTo": "...",
+      "asset": "..."
+    }
+  ]
+}
+```
+
+That means:
+
+- price is determined server-side by the API path, model, and request body
+- different APIs can return different `maxAmountRequired`
+- the client simply signs exactly what the server asks for
+
+If you want to preview the price for another API without paying yet, send the same request once without Bearer auth and without `X-Payment`, then inspect the returned `accepts` list.
+
+## Configuring Other APIs
+
+The configuration is the same for all x402-enabled AceDataCloud APIs:
+
+- `baseURL`: usually `https://api.acedata.cloud`
+- `network`: `base`, `solana`, or `skale`
+- wallet:
+  - `solanaWallet` for Solana
+  - `evmProvider` + `evmAddress` for Base or SKALE
+- actual API path and body:
+  - `/openai/chat/completions`
+  - `/suno/audios`
+  - any other AceDataCloud endpoint that returns `402`
+
+Example with another endpoint:
+
+```ts
+const result = await client.post('/suno/audios', {
+  prompt: 'a short synthwave loop',
+  make_instrumental: true,
+});
+```
+
+If an endpoint does **not** return `402`, it is not currently using x402 payment flow and should be called with its normal auth path instead.
+
+## Live Verification
+
+The repository includes a three-network regression script:
+
+```bash
+node --experimental-strip-types scripts/test-chat-payment-scenarios.ts
+```
+
+Latest successful live run on `2026-04-19`:
+
+- Base
+  - trace: `b60e7f0d-5baf-403f-999a-323f3ffeaa38`
+  - tx: [`0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec`](https://basescan.org/tx/0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec)
+- Solana
+  - trace: `b9f2bc74-2594-48b1-aca5-1bd6a5052319`
+  - tx: [`3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr`](https://explorer.solana.com/tx/3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr?cluster=mainnet-beta)
+- SKALE
+  - trace: `c2448a00-678d-4279-bb43-4a56c6bdd6c7`
+  - tx: [`0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1`](https://skale-base-explorer.skalenodes.com/tx/0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1)
+
+## Release Flow
+
+This repository is wired for real npm publishing through GitHub Actions:
+
+- `CI` workflow:
+  - `npm ci`
+  - `npm run build`
+  - `npm pack --json --dry-run`
+- `Publish` workflow:
+  - triggers on GitHub Release `published`
+  - can also be run manually with `workflow_dispatch`
+  - publishes with `npm publish --provenance --access public`
+
+Operational prerequisite:
+
+- set repository secret `NPM_TOKEN`
+
+Without `NPM_TOKEN`, the workflow can build and validate the package, but it cannot publish to npm.
+
+## How It Works
+
+1. Client sends API request without normal Bearer auth
+2. Server returns `402` with payment requirements
+3. Client picks the configured network
+4. Solana path signs and sends the token transfer
+5. EVM path signs `TransferWithAuthorization`
+6. Client retries with `X-Payment`
+7. Server verifies and settles the payment, then returns the API result
