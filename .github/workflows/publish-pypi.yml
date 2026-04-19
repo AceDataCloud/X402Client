@@ -1,0 +1,93 @@
+name: Publish To PyPI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish-pypi:
+    name: Build & publish (PyPI)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    environment:
+      name: pypi
+      url: https://pypi.org/project/acedatacloud-x402/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build hatchling
+
+      - name: Compute CalVer version
+        id: version
+        # Version format: YYYY.M.D[.N] — query PyPI for today's highest build and bump.
+        run: |
+          PKG_NAME=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['name'])")
+          DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
+          echo "Package: $PKG_NAME"
+          echo "Date prefix (UTC): $DATE_PREFIX"
+          VERSION=$(PKG_NAME="$PKG_NAME" DATE_PREFIX="$DATE_PREFIX" python -c "
+          import json, os, urllib.request
+          name = os.environ['PKG_NAME']
+          prefix = os.environ['DATE_PREFIX']
+          try:
+              with urllib.request.urlopen(f'https://pypi.org/pypi/{name}/json', timeout=10) as r:
+                  versions = list(json.load(r).get('releases', {}).keys())
+          except Exception:
+              print(prefix); raise SystemExit(0)
+          same = [v for v in versions if v == prefix or v.startswith(prefix + '.')]
+          if not same:
+              print(prefix); raise SystemExit(0)
+          max_n = 0
+          for v in same:
+              if v == prefix:
+                  if max_n < 1: max_n = 1
+                  continue
+              tail = v[len(prefix) + 1:]
+              try:
+                  n = int(tail)
+                  if n >= max_n: max_n = n + 1
+              except ValueError:
+                  pass
+          print(f'{prefix}.{max_n}')
+          ")
+          echo "Resolved version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp version into pyproject.toml
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python -c "
+          import os, re, pathlib
+          version = os.environ['VERSION']
+          p = pathlib.Path('pyproject.toml')
+          text = p.read_text()
+          text = re.sub(r'^version = \"[^\"]+\"', f'version = \"{version}\"', text, count=1, flags=re.M)
+          p.write_text(text)
+          "
+          grep -m1 '^version' pyproject.toml
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/

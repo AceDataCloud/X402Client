@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "acedatacloud-x402"
+version = "0.1.0"
+description = "X402 payment protocol client for AceDataCloud APIs. Plugs into the acedatacloud SDK as a payment_handler."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "AceDataCloud", email = "dev@acedata.cloud" }]
+requires-python = ">=3.10"
+keywords = ["x402", "acedatacloud", "payment", "solana", "base", "evm", "usdc"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "httpx>=0.25",
+  "eth-account>=0.11",
+  "eth-utils>=4.0",
+  "solders>=0.21",
+  "base58>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.6",
+  "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/AceDataCloud/X402Client"
+Repository = "https://github.com/AceDataCloud/X402Client"
+Issues = "https://github.com/AceDataCloud/X402Client/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/acedatacloud_x402"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

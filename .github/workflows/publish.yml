@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: typescript
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -23,14 +26,11 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
           cache: npm
+          cache-dependency-path: typescript/package-lock.json
 
       - name: Compute CalVer version
         id: version
-        # Version format: YYYY.M.D[.N] (no leading zeros, matches AceDataCloud MCPs).
-        # Query the npm registry for today's highest published build number and bump
-        # it, so multiple pushes per day get unique versions without manual editing.
-        env:
-          PKG_NAME: ${{ env.PKG_NAME }}
+        # Version format: YYYY.M.D[.N] — query npm for today's highest build and bump.
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
           DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
@@ -46,29 +46,15 @@ jobs:
               let body = '';
               res.on('data', (c) => (body += c));
               res.on('end', () => {
-                if (res.statusCode === 404) {
-                  console.log(prefix);
-                  return;
-                }
+                if (res.statusCode === 404) { console.log(prefix); return; }
                 let versions = [];
-                try {
-                  const data = JSON.parse(body);
-                  versions = Object.keys(data.versions || {});
-                } catch (e) {
-                  console.log(prefix);
-                  return;
-                }
+                try { versions = Object.keys(JSON.parse(body).versions || {}); }
+                catch (e) { console.log(prefix); return; }
                 const same = versions.filter((v) => v === prefix || v.startsWith(prefix + '.'));
-                if (same.length === 0) {
-                  console.log(prefix);
-                  return;
-                }
+                if (same.length === 0) { console.log(prefix); return; }
                 let maxN = 0;
                 for (const v of same) {
-                  if (v === prefix) {
-                    if (maxN < 1) maxN = 1;
-                    continue;
-                  }
+                  if (v === prefix) { if (maxN < 1) maxN = 1; continue; }
                   const tail = v.slice(prefix.length + 1);
                   const n = Number.parseInt(tail, 10);
                   if (Number.isFinite(n) && n >= maxN) maxN = n + 1;
@@ -106,11 +92,10 @@ jobs:
         with:
           name: npm-package
           path: |
-            package.json
-            package-lock.json
-            dist/
-            README.md
-            LICENSE
+            typescript/package.json
+            typescript/package-lock.json
+            typescript/dist/
+            typescript/README.md
           if-no-files-found: warn
 
   publish-npm:
@@ -136,8 +121,6 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish
-        # prepublishOnly in package.json would re-run set-date-version.mjs + build;
-        # we already built, so skip lifecycle scripts.
         run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -161,41 +144,3 @@ jobs:
             --title "v${{ needs.build.outputs.version }}" \
             --generate-notes \
             --repo '${{ github.repository }}' || echo "Release already exists, skipping"
-name: Publish To npm
-
-on:
-  release:
-    types:
-      - published
-  workflow_dispatch:
-
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build package
-        run: npm run build
-
-      - name: Validate publish tarball
-        run: npm pack --json --dry-run
-
-      - name: Publish package
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

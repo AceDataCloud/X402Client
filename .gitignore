@@ -1,4 +1,32 @@
+# Node
 node_modules/
 dist/
 *.tsbuildinfo
+*.tgz
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+*.whl
+*.tar.gz
+.venv/
+.venv_*/
+venv/
+
+# Env
 .env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
