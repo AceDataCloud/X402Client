@@ -1,5 +1,3 @@
-export { createX402Client } from './client.js';
-export type { X402Client } from './client.js';
 export {
   createX402PaymentHandler,
 } from './sdkAdapter.js';
@@ -10,8 +8,6 @@ export type {
   PaymentRequirement,
   PaymentRequiredResponse,
   X402PaymentEnvelope,
-  X402ClientOptions,
-  X402Response,
   SolanaWalletAdapter,
   EVMProvider,
   SolanaPayload,
