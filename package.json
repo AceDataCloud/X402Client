@@ -26,7 +26,9 @@
     "build": "tsc",
     "lint": "eslint src/",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "version:date": "node scripts/set-date-version.mjs",
+    "version:date:dry": "node scripts/set-date-version.mjs --dry-run",
+    "prepublishOnly": "node scripts/set-date-version.mjs && npm run build"
   },
   "peerDependencies": {
     "@solana/web3.js": "^1.90.0"

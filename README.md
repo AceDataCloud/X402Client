@@ -177,3 +177,32 @@ Without `NPM_TOKEN`, the workflow can build and validate the package, but it can
 5. EVM path signs `TransferWithAuthorization`
 6. Client retries with `X-Payment`
 7. Server verifies and settles the payment, then returns the API result
+
+## Releasing
+
+Versions follow **CalVer** (`YYYY.M.D`) to match the convention used by AceDataCloud MCP servers. The date is stamped automatically at publish time by `prepublishOnly`, so the `version` field in the committed `package.json` is a placeholder and does not need manual bumping.
+
+```bash
+# preview today's version without touching package.json
+npm run version:date:dry
+
+# stamp the date into package.json manually (usually not needed)
+npm run version:date
+
+# publish (prepublishOnly stamps the date + runs build)
+npm publish --access public
+```
+
+If multiple releases are cut on the same day, the helper auto-bumps to `YYYY.M.D.1`, `YYYY.M.D.2`, … Published npm versions will always reflect the actual publish day.
+
+## End-to-End Tests
+
+Real network signing flows live under `scripts/` and settle actual USDC on chain against `https://api.acedata.cloud`:
+
+```bash
+npx tsx scripts/test-real-e2e.ts    # Base (EVM)
+npx tsx scripts/test-solana-e2e.ts  # Solana
+npx tsx scripts/test-skale-e2e.ts   # SKALE
+```
+
+The SKALE script reads `SKALE_BASE_PRIVATE_KEY` from a repo-level `.env` (or the process environment). Base and Solana scripts use dedicated funded test wallets hardcoded in each file.
