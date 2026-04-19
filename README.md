@@ -2,6 +2,8 @@
 
 X402 payment protocol client for AceDataCloud APIs. Automatically handles `402 Payment Required` → wallet signing → retry.
 
+Currently verified against AceDataCloud's `openai/chat/completions` path with `base`, `solana`, and `skale`.
+
 ## Install
 
 ```bash
@@ -20,33 +22,36 @@ import { createX402Client } from '@acedatacloud/x402-client';
 const client = createX402Client({
   baseURL: 'https://api.acedata.cloud',
   network: 'solana',
-  solanaWallet: phantomWallet, // any adapter with signAndSendTransaction
+  solanaWallet: phantomWallet, // wallet-fee-payer mode: must support signAndSendTransaction
 });
 
 // Automatically handles 402 → sign USDC transfer → retry
-const result = await client.post('/suno/v1/generations', {
-  prompt: 'A happy song about sunshine',
-  model: 'chirp-v4',
+const result = await client.post('/openai/chat/completions', {
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
+  max_tokens: 10,
 });
 
 console.log(result.data);    // API response
 console.log(result.paid);    // true if 402→payment→retry occurred
 ```
 
-### Base (EVM)
+### Base / SKALE (EVM)
 
 ```typescript
 import { createX402Client } from '@acedatacloud/x402-client';
 
 const client = createX402Client({
   baseURL: 'https://api.acedata.cloud',
-  network: 'base',
+  network: 'base', // or 'skale'
   evmProvider: window.ethereum,         // any EIP-1193 provider
   evmAddress: '0xYourAddress...',
 });
 
-const result = await client.post('/suno/v1/generations', {
-  prompt: 'A jazz song',
+const result = await client.post('/openai/chat/completions', {
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
+  max_tokens: 10,
 });
 ```
 
@@ -66,7 +71,7 @@ const header = btoa(JSON.stringify(envelope));
 1. Client sends API request (no Bearer token)
 2. Server returns `402` with `{ accepts: [{ network, maxAmountRequired, payTo, asset, ... }] }`
 3. Client picks the requirement matching the configured `network`
-4. **Solana**: builds SPL `TransferChecked` tx → wallet `signAndSendTransaction` → encodes `{ signature }` 
+4. **Solana**: builds SPL `TransferChecked` tx → wallet `signAndSendTransaction` → encodes `{ signature }`
 5. **EVM**: builds EIP-712 `TransferWithAuthorization` → wallet `eth_signTypedData_v4` → encodes `{ authorization, signature }`
 6. Client retries the original request with `X-Payment: <base64 encoded envelope>`
 7. Server verifies + settles payment → returns API result
