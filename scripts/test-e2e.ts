@@ -84,11 +84,15 @@ async function main() {
   await testStep1_Get402();
 
   console.log('\n=== Next steps ===');
-  console.log('To complete E2E, use the X402 client SDK with a real wallet:');
+  console.log('To complete E2E, plug the x402 handler into the SDK:');
   console.log('');
-  console.log('  import { createX402Client } from "@acedatacloud/x402-client";');
-  console.log('  const client = createX402Client({ baseURL, network: "solana", solanaWallet });');
-  console.log('  const result = await client.post("/suno/v1/generations", { prompt: "..." });');
+  console.log('  import { AceDataCloud } from "@acedatacloud/sdk";');
+  console.log('  import { createX402PaymentHandler } from "@acedatacloud/x402-client";');
+  console.log('  const client = new AceDataCloud({');
+  console.log('    paymentHandler: createX402PaymentHandler({ network: "solana", solanaWallet }),');
+  console.log('  });');
+  console.log('  const task = await client.audio.generate({ prompt: "..." });');
+  console.log('  const result = await task.wait();');
 }
 
 main().catch(console.error);

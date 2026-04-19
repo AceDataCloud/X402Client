@@ -70,30 +70,3 @@ export interface SolanaWalletAdapter {
 export interface EVMProvider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
 }
-
-/** Options for creating an X402 client. */
-export interface X402ClientOptions {
-  /** Base URL of the API (e.g. https://api.acedata.cloud) */
-  baseURL: string;
-  /** Preferred payment network */
-  network: 'solana' | 'base' | 'skale';
-  /** Solana wallet adapter (required if network=solana) */
-  solanaWallet?: SolanaWalletAdapter;
-  /** EVM EIP-1193 provider (required if network=base/skale) */
-  evmProvider?: EVMProvider;
-  /** EVM account address (required if network=base/skale) */
-  evmAddress?: string;
-  /** Custom fetch implementation */
-  fetch?: typeof globalThis.fetch;
-}
-
-/** Result of a successful X402-wrapped request. */
-export interface X402Response<T = unknown> {
-  status: number;
-  data: T;
-  headers: Record<string, string>;
-  /** The X-Payment header that was sent (base64) */
-  xPaymentHeader?: string;
-  /** Whether a 402→retry cycle occurred */
-  paid: boolean;
-}
