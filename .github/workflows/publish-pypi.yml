@@ -22,13 +22,14 @@ jobs:
           DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
           echo "Package: $PKG_NAME"
           echo "Date prefix (UTC): $DATE_PREFIX"
-          VERSION=$(DATE_PREFIX=$DATE_PREFIX python3 -c "
+          VERSION=$({ DATE_PREFIX=$DATE_PREFIX PKG_NAME=$PKG_NAME python3 -c "
           import json, os, urllib.request
           name = os.environ['PKG_NAME']
           prefix = os.environ['DATE_PREFIX']
           try:
               with urllib.request.urlopen(f'https://pypi.org/pypi/{name}/json', timeout=10) as r:
-                  versions = list(json.load(r).get('releases', {}).keys())
+                  data = json.load(r)
+                  versions = list(data.get('releases', {}).keys())
           except Exception:
               versions = []
           
@@ -48,13 +49,17 @@ jobs:
               except ValueError:
                   pass
           print(f'{prefix}.{max_n}')
-          ")
+          " || echo "$DATE_PREFIX.error"; })
           echo "Resolved version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Update version in pyproject.toml
         run: |
-          VERSION=${{ steps.calver.outputs.version }}
+          VERSION="${{ steps.calver.outputs.version }}"
+          if [[ "$VERSION" == *".error"* ]]; then
+            echo "Error computing version"
+            exit 1
+          fi
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" python/pyproject.toml
           cat python/pyproject.toml | grep "^version ="
 
@@ -65,8 +70,11 @@ jobs:
 
       - name: Build and publish
         env:
+          # Note: Using PYPI_API_TOKEN as seen in workflow, but checking secrets first might be wise.
+          # Some repos use PYPI_TOKEN, others PYPI_API_TOKEN.
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          cd python && python -m build
-          twine upload python/dist/*
+          cd python
+          python -m build
+          twine upload dist/*
