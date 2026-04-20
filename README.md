@@ -9,6 +9,7 @@ This is a monorepo with one package per language, each designed as a **plugin** 
 | ---------- | -------------------------------------------------------------------------- | ------------------------------------------------------ |
 | TypeScript | [`@acedatacloud/x402-client`](./typescript) — npm                          | [`@acedatacloud/sdk`](https://github.com/AceDataCloud/SDK) |
 | Python     | [`acedatacloud-x402`](./python) — PyPI                                     | [`acedatacloud`](https://pypi.org/project/acedatacloud/)   |
+| Go         | [`github.com/AceDataCloud/X402Client/go`](./go) — go module (tag-based)    | [`github.com/AceDataCloud/SDK/go`](https://github.com/AceDataCloud/SDK)  |
 
 The SDK does all the API work (task polling, SSE streaming, retries, typed errors). This package only contributes one thing: signing an `X-Payment` header when the server returns `402 Payment Required`.
 
