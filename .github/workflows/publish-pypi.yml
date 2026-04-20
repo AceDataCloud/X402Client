@@ -3,6 +3,137 @@ name: Publish To PyPI
 on:
   push:
     branches: [main]
+    paths:
+      - "python/**"
+      - ".github/workflows/publish-pypi.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate CalVer version
+        id: version
+        run: |
+          DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
+          pip install requests -q
+          LATEST_BUILD=$(python -c "
+          import requests
+          try:
+              resp = requests.get('https://pypi.org/pypi/acedatacloud-x402/json', timeout=10)
+              if resp.status_code == 200:
+                  versions = resp.json().get('releases', {}).keys()
+                  today = '${DATE_PREFIX}'
+                  today_versions = [v for v in versions if v.startswith(today)]
+                  builds = []
+                  for v in today_versions:
+                      parts = v.split('.')
+                      if len(parts) == 4:
+                          try: builds.append(int(parts[3]))
+                          except ValueError: pass
+                  print(max(builds) + 1 if builds else 0)
+              else:
+                  print(0)
+          except Exception:
+              print(0)
+          ")
+          VERSION="${DATE_PREFIX}.${LATEST_BUILD}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Generated version: $VERSION"
+
+      - name: Stamp version into pyproject.toml
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          python -c "
+          import re
+          with open('pyproject.toml') as f:
+              text = f.read()
+          text = re.sub(r'^version = \"[^\"]+\"', f'version = \"$VERSION\"', text, count=1, flags=re.M)
+          with open('pyproject.toml', 'w') as f:
+              f.write(text)
+          "
+          grep -m1 '^version' pyproject.toml
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: python/dist/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/acedatacloud-x402/${{ needs.build.outputs.version }}
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install "twine>=6.0.0"
+          twine upload dist/*
+
+  create-release:
+    name: Create GitHub Release
+    if: github.event_name == 'push'
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "python-v${{ needs.build.outputs.version }}" dist/* \
+            --title "Python v${{ needs.build.outputs.version }}" \
+            --generate-notes \
+            --repo '${{ github.repository }}' || echo "Release already exists, skipping"
+name: Publish To PyPI
+
+on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
