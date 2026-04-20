@@ -22,7 +22,7 @@ jobs:
           DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
           echo "Package: $PKG_NAME"
           echo "Date prefix (UTC): $DATE_PREFIX"
-          VERSION=$(python3 -c "
+          VERSION=$(DATE_PREFIX=$DATE_PREFIX python3 -c "
           import json, os, urllib.request
           name = os.environ['PKG_NAME']
           prefix = os.environ['DATE_PREFIX']
