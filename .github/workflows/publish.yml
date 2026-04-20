@@ -30,14 +30,19 @@ jobs:
 
       - name: Compute CalVer version
         id: version
-        # Version format: YYYY.M.D[.N] — query npm for today's highest build and bump.
+        # Version format: YYYY.MDD.BUILD (e.g. 2026.419.0) — matches @acedatacloud/sdk.
+        # MDD = month*100 + day, so Apr 19 → 419 and Dec 3 → 1203. Keeps semver 3-part.
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
-          DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
+          YEAR=$(date -u +'%Y')
+          MONTH=$(date -u +'%-m')
+          DAY=$(date -u +'%-d')
+          MDD=$((MONTH * 100 + DAY))
+          DATE_PREFIX="${YEAR}.${MDD}"
           echo "Package: $PKG_NAME"
           echo "Date prefix (UTC): $DATE_PREFIX"
 
-          VERSION=$(PKG_NAME="$PKG_NAME" DATE_PREFIX="$DATE_PREFIX" node -e "
+          LATEST_BUILD=$(PKG_NAME="$PKG_NAME" DATE_PREFIX="$DATE_PREFIX" node -e "
             const https = require('https');
             const name = process.env.PKG_NAME;
             const prefix = process.env.DATE_PREFIX;
@@ -46,24 +51,22 @@ jobs:
               let body = '';
               res.on('data', (c) => (body += c));
               res.on('end', () => {
-                if (res.statusCode === 404) { console.log(prefix); return; }
+                if (res.statusCode === 404) { console.log(0); return; }
                 let versions = [];
                 try { versions = Object.keys(JSON.parse(body).versions || {}); }
-                catch (e) { console.log(prefix); return; }
-                const same = versions.filter((v) => v === prefix || v.startsWith(prefix + '.'));
-                if (same.length === 0) { console.log(prefix); return; }
-                let maxN = 0;
-                for (const v of same) {
-                  if (v === prefix) { if (maxN < 1) maxN = 1; continue; }
-                  const tail = v.slice(prefix.length + 1);
-                  const n = Number.parseInt(tail, 10);
-                  if (Number.isFinite(n) && n >= maxN) maxN = n + 1;
-                }
-                console.log(prefix + '.' + maxN);
+                catch (e) { console.log(0); return; }
+                const today = versions.filter((v) => v.startsWith(prefix + '.'));
+                if (today.length === 0) { console.log(0); return; }
+                const builds = today.map((v) => {
+                  const parts = v.split('.');
+                  return parts.length === 3 ? Number.parseInt(parts[2], 10) : 0;
+                });
+                console.log(Math.max(...builds) + 1);
               });
-            }).on('error', () => console.log(prefix));
+            }).on('error', () => console.log(0));
           ")
 
+          VERSION="${DATE_PREFIX}.${LATEST_BUILD}"
           echo "Resolved version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
