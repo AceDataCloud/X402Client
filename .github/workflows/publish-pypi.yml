@@ -1,24 +1,32 @@
-name: Publish To PyPI
+name: Publish to PyPI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+    paths:
+      - 'python/**'
   workflow_dispatch:
 
 jobs:
-  publish:
+  build-n-publish:
+    name: Build and publish Python 🐍 distributions to PyPI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-
-      - name: Compute CalVer version
-        id: calver
-        env:
-          PKG_NAME: acedatacloud-x402
+          python-version: "3.x"
+      - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+      
+      - name: Calculate Version (CalVer)
+        id: calver
+        run: |
+          PKG_NAME="acedatacloud-x402"
           DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
           echo "Package: $PKG_NAME"
           echo "Date prefix (UTC): $DATE_PREFIX"
@@ -33,22 +41,17 @@ jobs:
           except Exception:
               versions = []
           
-          same = [v for v in versions if v == prefix or v.startswith(prefix + '.')]
-          if not same:
-              print(prefix); exit(0)
-          
+          # Filter versions starting with prefix
+          relevant = [v for v in versions if v.startswith(prefix + '.')]
           max_n = 0
-          for v in same:
-              if v == prefix:
-                  if max_n < 1: max_n = 1
-                  continue
-              tail = v[len(prefix) + 1:]
+          for v in relevant:
               try:
-                  n = int(tail)
-                  if n >= max_n: max_n = n + 1
+                  n = int(v.split('.')[-1])
+                  if n > max_n:
+                      max_n = n
               except ValueError:
                   pass
-          print(f'{prefix}.{max_n}')
+          print(f'{prefix}.{max_n + 1}')
           " || echo "$DATE_PREFIX.error"; })
           echo "Resolved version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -63,17 +66,13 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" python/pyproject.toml
           cat python/pyproject.toml | grep "^version ="
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
+      - name: Install build tool
+        run: python3 -m pip install --upgrade build
 
       - name: Build and publish
         env:
-          # Note: Using PYPI_API_TOKEN as seen in workflow, but checking secrets first might be wise.
-          # Some repos use PYPI_TOKEN, others PYPI_API_TOKEN.
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
           cd python
           python -m build
