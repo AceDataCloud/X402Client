@@ -36,43 +36,44 @@ jobs:
 
       - name: Compute CalVer version
         id: version
-        # Version format: YYYY.M.D[.N] — query PyPI for today's highest build and bump.
+        shell: python
         run: |
-          PKG_NAME=acedatacloud-x402
-          DATE_PREFIX=$(date -u +'%Y.%-m.%-d')
-          echo "Package: \$PKG_NAME"
-          echo "Date prefix (UTC): \$DATE_PREFIX"
-          VERSION=\$(PKG_NAME="\$PKG_NAME" DATE_PREFIX="\$DATE_PREFIX" python3 -c "
-          import json, os, urllib.request
-          name = os.environ['PKG_NAME']
-          prefix = os.environ['DATE_PREFIX']
+          import json, os, urllib.request, datetime, subprocess
+          name = "acedatacloud-x402"
+          prefix = datetime.datetime.now(datetime.timezone.utc).strftime("%Y.%-m.%-d")
+          print(f"Package: {name}")
+          print(f"Date prefix (UTC): {prefix}")
           try:
-              with urllib.request.urlopen(f'https://pypi.org/pypi/{name}/json', timeout=10) as r:
-                  versions = list(json.load(r).get('releases', {}).keys())
-          except Exception:
-              print(prefix); exit(0)
-          same = [v for v in versions if v == prefix or v.startswith(prefix + '.')]
+              with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json", timeout=10) as r:
+                  versions = list(json.load(r).get("releases", {}).keys())
+          except Exception as e:
+              print(f"Error fetching from PyPI: {e}")
+              versions = []
+          
+          same = [v for v in versions if v == prefix or v.startswith(prefix + ".")]
           if not same:
-              print(prefix); exit(0)
-          max_n = 0
-          for v in same:
-              if v == prefix:
-                  if max_n < 1: max_n = 1
-                  continue
-              tail = v[len(prefix) + 1:]
-              try:
-                  n = int(tail)
-                  if n >= max_n: max_n = n + 1
-              except ValueError:
-                  pass
-          print(f'{prefix}.{max_n}')
-          ")
-          echo "Resolved version: \$VERSION"
-          echo "version=\$VERSION" >> "\$GITHUB_OUTPUT"
+              version = prefix
+          else:
+              max_n = 0
+              for v in same:
+                  if v == prefix:
+                      if max_n < 1: max_n = 1
+                      continue
+                  tail = v[len(prefix) + 1:]
+                  try:
+                      n = int(tail)
+                      if n >= max_n: max_n = n + 1
+                  except ValueError:
+                      pass
+              version = f"{prefix}.{max_n}"
+          
+          print(f"Resolved version: {version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={version}\n")
 
       - name: Stamp version into pyproject.toml
         env:
-          VERSION: \${{ steps.version.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           python3 -c "
           import os, re, pathlib
@@ -94,10 +95,10 @@ jobs:
 
       - name: Create Release
         env:
-          GITHUB_TOKEN: \${{ github.token }}
-          VERSION: \${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create \"python-v\$VERSION\" python/dist/* \
-            --title \"Python v\$VERSION\" \
+          gh release create "python-v$VERSION" python/dist/* \
+            --title "Python v$VERSION" \
             --generate-notes \
-            --repo '\${{ github.repository }}' || echo \"Release already exists, skipping\"
+            --repo "${{ github.repository }}" || echo "Release already exists, skipping"
