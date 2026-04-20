@@ -55,8 +55,8 @@ jobs:
       - name: Update version in pyproject.toml
         run: |
           VERSION=${{ steps.calver.outputs.version }}
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
-          cat pyproject.toml | grep "^version ="
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" python/pyproject.toml
+          cat python/pyproject.toml | grep "^version ="
 
       - name: Install dependencies
         run: |
@@ -68,5 +68,5 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m build
-          twine upload dist/*
+          cd python && python -m build
+          twine upload python/dist/*
