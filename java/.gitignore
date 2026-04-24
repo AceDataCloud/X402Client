@@ -1,0 +1,11 @@
+# Java package ignores
+.gradle/
+build/
+!gradle-wrapper.jar
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+bin/
+.vscode/
