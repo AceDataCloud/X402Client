@@ -83,6 +83,37 @@ See **[python/README.md](./python/README.md)** for the full guide.
 
 ---
 
+## Verified end-to-end
+
+Live on-chain settlements through `https://facilitator.acedata.cloud`, run from
+[`typescript/scripts`](./typescript/scripts) on **2026-04-25**:
+
+| Network    | API endpoint                | USDC paid | Settlement tx |
+| ---------- | --------------------------- | --------- | ------------- |
+| 🟦 Base    | `POST /openai/chat/completions` | 0.020568 | [`0xa1697ee4…7c2708`](https://basescan.org/tx/0xa1697ee44d6c8d14c8a26c9a41b507fb718bac85c9153396b3e23b565a7c2708) |
+| 🟦 Base    | `POST /midjourney/imagine` (turbo) | 0.025708 | [`0x2d161b04…84539b2`](https://basescan.org/tx/0x2d161b04589aad026e6c575509f1867bbeeba6bff6f17064b1a423dd084539b2) |
+| 🟨 SKALE   | `POST /openai/chat/completions` | 0.020568 | [`0x621b361a…7b12979`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x621b361ad78e6bb6f910dba603a4267bca92ca8748894011cced803227b12979) |
+| 🟨 SKALE   | `POST /midjourney/imagine` (turbo) | 0.025708 | [`0x0e66f646…6b827d3`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x0e66f646bdfbf2e29ca8bc3bc19f252aa6109d8cf7aff1ab6836111e56b827d3) |
+| 🟪 Solana  | `POST /openai/chat/completions` | 0.095215 | [`4fsVAukg…D1Gd3t`](https://solscan.io/tx/4fsVAukgeFpGezcmu84xu4gYm1ANoAzgked8zhV78g2ffFL9AMpNP64Q1QkLoHtxgLuaPXcACBPZiLykwKD1Gd3t) |
+| 🟪 Solana  | `POST /midjourney/imagine` (turbo) | 0.115215 | [`5G438pwj…WUeBj`](https://solscan.io/tx/5G438pwjGBPjekkZZgHsqKgkV43nxCLoqMoue7J6aHhRVCYhtnR45EE2SzffnsbQMVxceb8BhdZFA3jTECNWUeBj) |
+
+Reproduce with the live e2e scripts (need a funded test wallet for each chain):
+
+```bash
+cd typescript
+
+# Base / SKALE — set X402B_BASE_PAYER_PRIVATE_KEY or SKALE_BASE_PRIVATE_KEY
+TEST_API_PATH='/openai/chat/completions' \
+  TEST_BODY='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],"max_tokens":10}' \
+  npx tsx scripts/test-real-e2e.ts        # Base
+npx tsx scripts/test-skale-e2e.ts         # SKALE
+
+# Solana — set X402B_SOLANA_PAYER_PRIVATE_KEY (base58)
+npx tsx scripts/test-solana-e2e.ts
+```
+
+---
+
 ## Repository layout
 
 ```
