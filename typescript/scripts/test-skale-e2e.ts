@@ -81,10 +81,14 @@ async function parseBody(res: Response): Promise<unknown> {
 
 async function main() {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
-  loadEnvFile(resolve(scriptDir, '../../.claude/.env'));
+  loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
+  loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
   const apiBase = process.env.API_BASE || 'https://api.acedata.cloud';
-  const prompt = process.env.SUNO_PROMPT || 'a short SKALE test beat';
+  const testApiPath = process.env.TEST_API_PATH || '/suno/audios';
+  const testBody = process.env.TEST_BODY
+    ? JSON.parse(process.env.TEST_BODY)
+    : { prompt: process.env.SUNO_PROMPT || 'a short SKALE test beat', make_instrumental: true };
   const wallet = new Wallet(getPrivateKey());
 
   console.log('=== SKALE X402 Real E2E Test ===');
@@ -92,11 +96,11 @@ async function main() {
   console.log(`Payer wallet: ${wallet.address}`);
   console.log('');
 
-  console.log('--- Step 1: Request without auth ---');
-  const res1 = await fetch(`${apiBase}/suno/audios`, {
+  console.log(`--- Step 1: Request ${testApiPath} without auth ---`);
+  const res1 = await fetch(`${apiBase}${testApiPath}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, make_instrumental: true }),
+    body: JSON.stringify(testBody),
   });
 
   const body1 = await parseBody(res1) as { accepts?: PaymentRequirement[] } | string | null;
@@ -174,14 +178,14 @@ async function main() {
   console.log(`  header length: ${xPayment.length}`);
   console.log('');
 
-  console.log('--- Step 3: Retry with X-Payment ---');
-  const res2 = await fetch(`${apiBase}/suno/audios`, {
+  console.log(`--- Step 3: Retry ${testApiPath} with X-Payment ---`);
+  const res2 = await fetch(`${apiBase}${testApiPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Payment': xPayment,
     },
-    body: JSON.stringify({ prompt, make_instrumental: true }),
+    body: JSON.stringify(testBody),
   });
 
   const body2 = await parseBody(res2);

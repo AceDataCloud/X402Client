@@ -42,8 +42,8 @@ function loadEnvFile(envPath: string): void {
 }
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-loadEnvFile(resolve(scriptDir, '../../.claude/.env'));
-loadEnvFile(resolve(scriptDir, '../../PlatformBackend/.env'));
+loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
+loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
 const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
 const SOLANA_RPC = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
@@ -57,12 +57,14 @@ if (!PAYER_PRIVATE_KEY) {
 }
 
 // Use a cheap API for testing (openai chat completion is fast + cheap)
-const TEST_API_PATH = '/openai/chat/completions';
-const TEST_BODY = {
-  model: 'gpt-4o-mini',
-  messages: [{ role: 'user', content: 'Say hi in 3 words' }],
-  max_tokens: 10,
-};
+const TEST_API_PATH = process.env.TEST_API_PATH || '/openai/chat/completions';
+const TEST_BODY = process.env.TEST_BODY
+  ? JSON.parse(process.env.TEST_BODY)
+  : {
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'Say hi in 3 words' }],
+      max_tokens: 10,
+    };
 
 interface PaymentRequirement {
   scheme: string;

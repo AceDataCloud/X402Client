@@ -29,10 +29,14 @@ function loadEnvFile(envPath: string): void {
 }
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-loadEnvFile(resolve(scriptDir, '../../.claude/.env'));
-loadEnvFile(resolve(scriptDir, '../../PlatformBackend/.env'));
+loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
+loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
 const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
+const TEST_API_PATH = process.env.TEST_API_PATH || '/suno/audios';
+const TEST_BODY = process.env.TEST_BODY
+  ? JSON.parse(process.env.TEST_BODY)
+  : { prompt: 'a short test beat', make_instrumental: true };
 const rawKey = process.env.X402B_BASE_PAYER_PRIVATE_KEY?.trim();
 if (!rawKey) {
   console.error('ERROR: X402B_BASE_PAYER_PRIVATE_KEY is missing. Add it to .claude/.env or PlatformBackend/.env.');
@@ -69,11 +73,11 @@ async function main() {
   console.log(`Payer wallet: ${wallet.address}\n`);
 
   // Step 1: Request without auth → 402
-  console.log('--- Step 1: POST /suno/audios without auth ---');
-  const res1 = await fetch(`${API_BASE}/suno/audios`, {
+  console.log(`--- Step 1: POST ${TEST_API_PATH} without auth ---`);
+  const res1 = await fetch(`${API_BASE}${TEST_API_PATH}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: 'a short test beat', make_instrumental: true }),
+    body: JSON.stringify(TEST_BODY),
   });
   console.log(`Status: ${res1.status}`);
   if (res1.status !== 402) {
@@ -143,14 +147,14 @@ async function main() {
   console.log(`   X-Payment header length: ${xPayment.length} chars\n`);
 
   // Step 4: Retry with X-Payment header
-  console.log('--- Step 3: Retry POST /suno/audios with X-Payment ---');
-  const res2 = await fetch(`${API_BASE}/suno/audios`, {
+  console.log(`--- Step 3: Retry POST ${TEST_API_PATH} with X-Payment ---`);
+  const res2 = await fetch(`${API_BASE}${TEST_API_PATH}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Payment': xPayment,
     },
-    body: JSON.stringify({ prompt: 'a short test beat', make_instrumental: true }),
+    body: JSON.stringify(TEST_BODY),
   });
 
   console.log(`Status: ${res2.status}`);
