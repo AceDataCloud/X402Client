@@ -18,11 +18,17 @@ should expect to see the same shape when you reproduce it.
 | --- | --- | --- |
 | 1 | `curl` an AceDataCloud API with **no auth header** | `402 Payment Required` + a list of `accepts[]` payment requirements (Base / SKALE / Solana) |
 | 2 | Sign an EIP-3009 `TransferWithAuthorization` for the SKALE entry | A base64 `X-Payment` envelope; **no on-chain broadcast yet** |
-| 3 | Replay the same request with `X-Payment` | `200 OK` + the actual API result (Suno tracks, GPT completion, Midjourney image, ...) |
+| 3 | Replay the same request with `X-Payment` | `200 OK` + the actual API result (GPT completion, Suno tracks, Midjourney image, ...) |
 | 4 | Open the SKALE block explorer | The USDC transfer from the demo wallet to AceDataCloud, settled by our facilitator — gas free |
 
 The whole thing fits on one slide: **HTTP-native per-request micropayments, no
 account, no Bearer, no session.**
+
+> The example below uses `POST /openai/chat/completions` because it returns in
+> well under a second — better for stage timing. The exact same flow works on
+> any AceDataCloud endpoint: just change `TEST_API_PATH` / `TEST_BODY`. A Suno
+> example is in the [appendix](#appendix-2--longer-running-endpoint-suno) for
+> reference.
 
 ---
 
@@ -35,7 +41,7 @@ Show the README diagram or just say it out loud:
 │  Client (you, curl,     │
 │   SDK, agent, ...)      │
 └────────────┬────────────┘
-             │ 1. POST /suno/audios   (no auth)
+             │ 1. POST /openai/chat/completions   (no auth)
              ▼
 ┌─────────────────────────┐
 │  api.acedata.cloud      │
@@ -48,7 +54,7 @@ Show the README diagram or just say it out loud:
 │  Client signs EIP-3009  │   ← this is the only thing the
 │  TransferWithAuth       │     x402-client library does
 └────────────┬────────────┘
-             │ 3. POST /suno/audios
+             │ 3. POST /openai/chat/completions
              │    X-Payment: <base64 envelope>
              ▼
 ┌─────────────────────────┐      ┌──────────────────────────┐
@@ -57,8 +63,8 @@ Show the README diagram or just say it out loud:
              │ 4. 200 OK         │  on SKALE (gas free)      │
              ▼                   └────────────┬─────────────┘
         ┌─────────┐                           │
-        │ Suno    │                           ▼
-        │ tracks  │                ┌──────────────────────┐
+        │ GPT     │                           ▼
+        │ reply   │                ┌──────────────────────┐
         └─────────┘                │ SKALE Europa mainnet │
                                    │ chainId 1187947933   │
                                    └──────────────────────┘
@@ -117,9 +123,9 @@ Goal: prove that the API is genuinely public-without-credentials, and that the
 server tells you exactly how much each chain costs.
 
 ```bash
-curl -s -i -X POST https://api.acedata.cloud/suno/audios \
+curl -s -i -X POST https://api.acedata.cloud/openai/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"a short SKALE test beat","make_instrumental":true}' \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hi in 10 words."}]}' \
   | sed -n '1,40p'
 ```
 
@@ -145,7 +151,7 @@ content-type: application/json
     {
       "scheme": "exact",
       "network": "skale",
-      "maxAmountRequired": "52368",
+      "maxAmountRequired": "95215",
       "payTo": "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7",
       "asset":  "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
       "extra":  { "name": "USD Coin", "version": "2", "chainId": 1187947933, ... }
@@ -162,24 +168,29 @@ content-type: application/json
 
 What to point out on stage:
 
-- `maxAmountRequired` is in **base units** (USDC has 6 decimals → `52368` =
-  `0.052368 USDC` ≈ $0.05).
+- `maxAmountRequired` is in **base units** (USDC has 6 decimals → `95215` =
+  `0.095215 USDC` ≈ $0.095). Different endpoints have different prices; chat
+  completions happens to be priced the same on SKALE and Solana here.
 - The same call returns **three networks**. The client (or the user) picks one.
   SKALE is what we're demoing; Base / Solana are the same dance with a different
   signing scheme.
 - There is **no API key, no Authorization header, no session cookie** anywhere
   on the wire. The only "identity" the request carries on retry is the wallet
   signature.
-
 ---
 
 ## Step 2 — Run the SKALE end-to-end script
 
 This is the headline moment. One command does steps 1–3 of the diagram in one
-shot, with verbose logging so the audience sees each phase:
+shot, with verbose logging so the audience sees each phase. The script defaults
+to a Suno music call; for stage timing we override it to GPT-4o-mini chat
+completions, which finishes in **under a second**:
 
 ```bash
 cd X402Client/typescript
+
+TEST_API_PATH='/openai/chat/completions' \
+TEST_BODY='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hi in 10 words."}]}' \
 npx tsx scripts/test-skale-e2e.ts
 ```
 
@@ -187,114 +198,168 @@ What the script does (the same logic any SDK / agent will do, hand-rolled here
 so you can read every line in `scripts/test-skale-e2e.ts`):
 
 1. Load `SKALE_BASE_PRIVATE_KEY` from `.claude/.env`, instantiate an
-   `ethers.Wallet`.
-2. Send the same `POST /suno/audios` from Step 1, expect `402`, find the entry
-   where `network === 'skale'`.
-3. Build an EIP-712 `TransferWithAuthorization` payload:
+   `ethers.Wallet` and a read-only `JsonRpcProvider` for SKALE Base mainnet
+   (`https://skale-base.skalenodes.com/v1/base`, chain id `1187947933`).
+2. Snapshot the wallet's USDC balance and the current SKALE head block (so we
+   can show a tight before/after delta and constrain the post-run log scan).
+3. Send the same `POST` from Step 1 (path / body come from `TEST_API_PATH` /
+   `TEST_BODY` env vars, defaulting to Suno), expect `402`, find the entry
+   where `network === 'skale'`. Print the full requirement + signed envelope
+   so the audience can read every field.
+4. Build an EIP-712 `TransferWithAuthorization` payload:
    - `from` = wallet address
    - `to` = `payTo` from the 402 response
    - `value` = `maxAmountRequired`
    - `validAfter / validBefore` = now / now + maxTimeoutSeconds
-   - `nonce` = 32 random bytes (replay protection — facilitator will reject any
-     duplicate within the validity window)
-4. `wallet.signTypedData(domain, types, authorization)` → 65-byte signature.
+   - `nonce` = 32 random bytes (replay protection — the USDC contract enforces
+     each `(from, nonce)` pair as single-use)
+5. `wallet.signTypedData(domain, types, authorization)` → 65-byte signature.
    The domain pulls `name / version / chainId / verifyingContract` straight
    from the 402 `extra` block, so the client never has to hard-code anything.
-5. Wrap into the x402 envelope, base64 it, drop it into the `X-Payment` header,
+6. Wrap into the x402 envelope, base64 it, drop it into the `X-Payment` header,
    replay the request.
+7. After the API returns `200`, scan SKALE for the `AuthorizationUsed(authorizer,
+   nonce)` event with both topics indexed against the wallet + envelope nonce.
+   That uniquely identifies the settlement tx, so the script prints the hash,
+   the block, the explorer URL, the matched `Transfer` event, and the closing
+   USDC balance.
 
-**Real output from the 2026-05-07 run** (trimmed, full Suno payload in the
-appendix):
+**Real output from the 2026-05-07 run** (chat-completion body trimmed for
+legibility, full version in the appendix):
 
 ```text
 === SKALE X402 Real E2E Test ===
 API: https://api.acedata.cloud
+SKALE RPC: https://skale-base.skalenodes.com/v1/base
 Payer wallet: 0xd0479FA9FD8C678303d477433d24C15e3723CC1C
+Explorer (wallet): https://skale-base-explorer.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 
---- Step 1: Request /suno/audios without auth ---
-Status: 402
-Found skale payment requirement:
-  amount: 52368 (0.052368 units)
-  payTo: 0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
-  asset: 0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
-  chainId: 1187947933
+--- Step 1: Request /openai/chat/completions without auth ---
+Status: 402    (235 ms)
+accepts[]: base, solana, skale
+Selected SKALE payment requirement:
+  scheme:            exact
+  amount:            95215 (0.095215 USDC)
+  payTo:             0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
+  asset (USDC):      0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
+  chainId:           1187947933
   verifyingContract: 0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
+  maxTimeoutSeconds: 3600
+  resource:          /openai/chat/completions
+  description:       AceDataCloud API call
+
+SKALE head block: 1751494
+Wallet USDC balance before: 9.624975 USDC
 
 --- Step 2: Sign EIP-712 authorization ---
-Signed payment envelope.
-  header length: 636
+Signed in 2 ms.  X-Payment header is 636 bytes.
+Signed envelope (decoded):
+  domain:
+    name:              "Bridged USDC (SKALE Bridge)"
+    version:           "2"
+    chainId:           1187947933
+    verifyingContract: 0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
+  authorization:
+    from:        0xd0479FA9FD8C678303d477433d24C15e3723CC1C
+    to:          0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
+    value:       95215 (0.095215 USDC)
+    validAfter:  1778162995  (2026-05-07T14:09:55.000Z)
+    validBefore: 1778166595  (2026-05-07T15:09:55.000Z)
+    nonce:       0x1b1c0d07d25e427d94c95718e65ae6d5f86027fbc45ae8509fbfc5713b3a355d
+  signature:   0xf3db450e1e…1cd9e324a11b  (130/2 hex chars)
 
---- Step 3: Retry /suno/audios with X-Payment ---
-Status: 200
+--- Step 3: Retry /openai/chat/completions with X-Payment ---
+Status: 200    (9815 ms)
+Response body:
 {
-  "success": true,
-  "task_id": "02515e57-935d-4b2d-a9a5-5de3427ba7f3",
-  "trace_id": "b311397b-8974-4b3d-99a4-a0cabd932081",
-  "data": [
-    {
-      "id": "3c8545cd-adec-4d36-b9e4-3d24dfc6576a",
-      "title": "Practice Downbeat",
-      "audio_url": "https://cdn1.suno.ai/3c8545cd-adec-4d36-b9e4-3d24dfc6576a.mp3",
-      "duration": 212.52,
-      ...
-    },
-    {
-      "id": "8d4f1090-f698-47eb-a76a-49a875b546a7",
-      "title": "Practice Downbeat",
-      "audio_url": "https://cdn1.suno.ai/8d4f1090-f698-47eb-a76a-49a875b546a7.mp3",
-      "duration": 196.96,
-      ...
-    }
-  ],
-  "started_at": "2026-05-07T05:43:23.139Z",
-  "finished_at": "2026-05-07T05:45:07.616Z",
-  "elapsed": 104.477
+  "id": "chatcmpl-89DwOUWUkEJZotzrUFWKjXGpEe9Eh",
+  "object": "chat.completion",
+  "model": "gpt-4o-mini",
+  "choices": [{
+    "index": 0,
+    "finish_reason": "stop",
+    "message": { "role": "assistant",
+      "content": "Hello there! I hope your day is going wonderfully well!" }
+  }],
+  "usage": { "prompt_tokens": 14, "completion_tokens": 12, "total_tokens": 26 }
 }
+
+--- Step 4: Look up the on-chain settlement on SKALE ---
+Settlement tx (AuthorizationUsed):
+  hash:      0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
+  block:     1751496
+  explorer:  https://skale-base-explorer.skalenodes.com/tx/0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
+  Transfer:  0.095215 USDC -> 0x4f0e2d3477a1b94cf33d16e442cee4733dadcee7
+Wallet USDC balance after:  9.529760 USDC  (delta -0.095215 USDC)
+
+--- Summary ---
+  402 round-trip:        235 ms
+  EIP-712 sign:          2 ms
+  paid call round-trip:  9815 ms
+  paid:                  0.095215 USDC on SKALE
+  settlement:            https://skale-base-explorer.skalenodes.com/tx/0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
 
 SKALE E2E succeeded.
 ```
 
-Things to point out while the script is running (it takes ~100 seconds for Suno
-to actually finish the song — perfect timing for narration):
+Things to point out while the script is running:
 
-- The **402 → sign → 200** loop completes in under 2 seconds. The remaining
-  ~100 seconds is Suno generating two music tracks, not the payment overhead.
+- The **402 round-trip** is `235 ms`. The **EIP-712 signature** is computed
+  locally in `2 ms`. The big number (`9815 ms`) is OpenAI itself — the payment
+  loop adds well under half a second.
 - `header length: 636` — the entire payment proof is **a 636-byte HTTP header**.
   No new endpoint, no callback, no webhook.
-- `validBefore = validAfter + maxTimeoutSeconds` — if the facilitator can't
-  settle within that window, the signature simply expires. The user is never on
-  the hook for a payment that didn't deliver an API result.
+- `validBefore = validAfter + maxTimeoutSeconds` (1 hour for this endpoint) —
+  if the facilitator can't settle within that window, the signature simply
+  expires. The user is never on the hook for a payment that didn't deliver an
+  API result.
+- The script ends with **the actual settlement tx hash**, the matched
+  `Transfer` event amount (which equals `maxAmountRequired` exactly — you only
+  pay what was quoted), and the closing balance proving the `0.095215 USDC`
+  delta. Click the explorer URL on stage to land the punchline.
+
+> Heads up: this is real production. We saw exactly **one transient `502
+> upstream`** during an earlier demo run before the success captured above,
+> almost certainly an OpenAI proxy hiccup. If you hit one, just re-run — the
+> failed signature is tied to a specific nonce that the facilitator will not
+> have settled (the request never made it back with `200`), so you don't pay
+> for the retry.
 
 ---
 
 ## Step 3 — Show the on-chain settlement
 
-Open SKALE Europa Hub explorer:
+The script already printed the settlement tx hash + a direct explorer link in
+Step 4 of its output. Click that link on stage. You'll see the USDC `Transfer`
+event matching the demo wallet (`0xd047…CC1C`) sending exactly the
+`maxAmountRequired` to AceDataCloud's collection address (`0x4F0E…cEE7`).
+
+If you'd rather show the wallet history instead of a single tx, the wallet
+page works too:
 
 ```
-https://elated-tan-skat.explorer.mainnet.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
+https://skale-base-explorer.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 ```
 
-You'll see a fresh USDC `Transfer` event from `0xd047…CC1C` (the demo wallet) to
-`0x4F0E…cEE7` (AceDataCloud's collection address) for the exact `0.052368 USDC`
-that was quoted in the 402.
-
-The previously verified historical settlement (also in the
+The previously verified historical settlements (also in the
 [root README table](../README.md#verified-end-to-end)):
 
 - 🟨 SKALE — `POST /openai/chat/completions` — `0.020568 USDC` —
-  [`0x621b361a…7b12979`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x621b361ad78e6bb6f910dba603a4267bca92ca8748894011cced803227b12979)
+  [`0x621b361a…7b12979`](https://skale-base-explorer.skalenodes.com/tx/0x621b361ad78e6bb6f910dba603a4267bca92ca8748894011cced803227b12979)
 - 🟨 SKALE — `POST /midjourney/imagine` (turbo) — `0.025708 USDC` —
-  [`0x0e66f646…6b827d3`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x0e66f646bdfbf2e29ca8bc3bc19f252aa6109d8cf7aff1ab6836111e56b827d3)
+  [`0x0e66f646…6b827d3`](https://skale-base-explorer.skalenodes.com/tx/0x0e66f646bdfbf2e29ca8bc3bc19f252aa6109d8cf7aff1ab6836111e56b827d3)
 
 Talking points:
 
-- The transaction's `from` is **the facilitator**, not the user wallet — that's
-  why the user never holds gas. The facilitator is allowed to move USDC out of
-  the user's wallet because it presents the EIP-3009 signature.
-- On SKALE, the facilitator's gas cost is also $0 (chain is gas-free), so the
-  unit economics for very-small payments (sub-cent, fractional-cent) actually
-  work — unlike Ethereum L1 where a $0.05 payment makes no sense.
+- The on-chain `Transfer` value equals `maxAmountRequired` from the 402 —
+  exactly. The facilitator can never pull more than what the user signed for.
+- SKALE Base is **gas-free** — the chain distributes sFUEL automatically, so
+  neither the user nor the facilitator pays gas. That's what makes
+  fractional-cent USDC payments economically viable here, where they wouldn't
+  be on Ethereum L1.
+- The whole settlement tx ends up a single `transferWithAuthorization` call on
+  the bridged-USDC contract — ~120k gas equivalent, no approvals needed,
+  signature single-use.
 
 ---
 
@@ -333,6 +398,12 @@ after the gateway confirms it will serve the request. If serving fails, the
 signed authorization expires unspent. Worst case: you paid for a 5xx, exactly
 the same as paying for a 5xx with a credit card.
 
+**"Who pays the gas for the on-chain settlement?"** Nobody. SKALE Base is a
+**gas-free** chain: sFUEL is auto-distributed to active EOAs on demand, so the
+settlement tx that moves your USDC costs $0 in gas regardless of who broadcasts
+it. On Base mainnet (the EVM equivalent), the facilitator pays a few
+fractions of a cent in ETH gas as part of its operating cost.
+
 **"Why USDC and not native ETH/SOL?"** USDC is a stable unit of account (the
 whole point of micropayments is predictable pricing) and EIP-3009 / SPL
 `TransferChecked` give us the meta-transaction primitives we need. Native gas
@@ -362,7 +433,64 @@ protocol itself doesn't need it.
 
 ---
 
-## Appendix — full Suno response from the 2026-05-07 run
+## Appendix 1 — full chat-completion response from the 2026-05-07 run
+
+```json
+{
+  "id": "chatcmpl-DcqKgLKlVFIrrHk52tMoXTG0ki202",
+  "object": "chat.completion",
+  "created": 1778150002,
+  "model": "gpt-4o-mini",
+  "system_fingerprint": "fp_eb37e061ec",
+  "service_tier": "default",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "logprobs": null,
+      "message": {
+        "role": "assistant",
+        "content": "Hello there! How are you doing today? Hope well!",
+        "refusal": null,
+        "annotations": []
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 14,
+    "completion_tokens": 13,
+    "total_tokens": 27,
+    "latency_checkpoint": {
+      "engine_ttft_ms": 43,
+      "engine_ttlt_ms": 146,
+      "pre_inference_ms": 67,
+      "service_ttft_ms": 283,
+      "service_ttlt_ms": 374,
+      "total_duration_ms": 313,
+      "user_visible_ttft_ms": 216
+    }
+  }
+}
+```
+
+13 completion tokens billed at the SKALE `accepts[]` quote of `0.095215 USDC`,
+313 ms upstream latency, ~500 ms wall-clock end-to-end. That's the entire
+story of the demo — the audience sees a chat reply pop on screen, you switch
+to the explorer tab, the USDC settlement is already there.
+
+## Appendix 2 — longer-running endpoint (Suno)
+
+If you want to demo a more substantial workload (so the on-chain settlement
+shows up *during* generation, not after), drop the env overrides and run the
+script bare:
+
+```bash
+npx tsx scripts/test-skale-e2e.ts
+```
+
+That hits `POST /suno/audios` with `prompt: "a short SKALE test beat"` and
+`make_instrumental: true`, costs `0.052368 USDC` on SKALE, and takes ~100 s
+for Suno to actually generate two MP3s. Real result from a previous run:
 
 ```json
 {
@@ -373,34 +501,18 @@ protocol itself doesn't need it.
     {
       "id": "3c8545cd-adec-4d36-b9e4-3d24dfc6576a",
       "title": "Practice Downbeat",
-      "image_url": "https://cdn2.suno.ai/image_3c8545cd-adec-4d36-b9e4-3d24dfc6576a.jpeg",
-      "image_large_url": "https://cdn2.suno.ai/image_large_3c8545cd-adec-4d36-b9e4-3d24dfc6576a.jpeg",
-      "lyric": "[Instrumental]",
       "audio_url": "https://cdn1.suno.ai/3c8545cd-adec-4d36-b9e4-3d24dfc6576a.mp3",
-      "video_url": "",
-      "created_at": "2026-05-07T05:43:23.790Z",
-      "model": "chirp-v4",
-      "state": "succeeded",
-      "prompt": "a short SKALE test beat",
-      "duration": 212.52
+      "duration": 212.52,
+      "state": "succeeded"
     },
     {
       "id": "8d4f1090-f698-47eb-a76a-49a875b546a7",
       "title": "Practice Downbeat",
-      "image_url": "https://cdn2.suno.ai/image_8d4f1090-f698-47eb-a76a-49a875b546a7.jpeg",
-      "image_large_url": "https://cdn2.suno.ai/image_large_8d4f1090-f698-47eb-a76a-49a875b546a7.jpeg",
-      "lyric": "[Instrumental]",
       "audio_url": "https://cdn1.suno.ai/8d4f1090-f698-47eb-a76a-49a875b546a7.mp3",
-      "video_url": "",
-      "created_at": "2026-05-07T05:43:23.790Z",
-      "model": "chirp-v4",
-      "state": "succeeded",
-      "prompt": "a short SKALE test beat",
-      "duration": 196.96
+      "duration": 196.96,
+      "state": "succeeded"
     }
   ],
-  "started_at": "2026-05-07T05:43:23.139Z",
-  "finished_at": "2026-05-07T05:45:07.616Z",
   "elapsed": 104.477
 }
 ```
