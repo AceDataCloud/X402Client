@@ -105,6 +105,51 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
+function previewBody(value: string, max = 500): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}…  [+${value.length - max} more chars, ${value.length} total]`;
+}
+
+function logHttpRequest(
+  label: string,
+  method: string,
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): void {
+  console.log(`  > ${label}`);
+  console.log(`  > ${method} ${url}`);
+  for (const [name, value] of Object.entries(headers)) {
+    // X-Payment can be 600+ bytes of base64; abbreviate it so the demo log
+    // stays readable. Everything else is printed verbatim.
+    const display =
+      name.toLowerCase() === 'x-payment'
+        ? `${value.slice(0, 32)}…${value.slice(-16)}  (${value.length} bytes base64, decoded above)`
+        : value;
+    console.log(`  > ${name}: ${display}`);
+  }
+  console.log(`  > Content-Length: ${Buffer.byteLength(body, 'utf8')}`);
+  console.log(`  >`);
+  console.log(`  > ${previewBody(body)}`);
+}
+
+function logHttpResponse(
+  status: number,
+  statusText: string,
+  headers: Headers,
+  bodyText: string,
+  elapsedMs: number,
+): void {
+  console.log(`  < HTTP ${status} ${statusText || ''}    (${elapsedMs} ms)`);
+  // Headers preserve order in undici; print them all, no filtering, since the
+  // audience may be looking specifically for via/x-kong-* on stage.
+  headers.forEach((value, name) => {
+    console.log(`  < ${name}: ${value}`);
+  });
+  console.log(`  <`);
+  console.log(`  < ${previewBody(bodyText, 1200)}`);
+}
+
 async function main() {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
@@ -131,20 +176,34 @@ async function main() {
   console.log('');
 
   console.log(`--- Step 1: Request ${testApiPath} without auth ---`);
-  const t1Start = Date.now();
-  const res1 = await fetch(`${apiBase}${testApiPath}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(testBody),
-  });
+  const url1 = `${apiBase}${testApiPath}`;
+  const headers1: Record<string, string> = { 'Content-Type': 'application/json' };
+  const body1Text = JSON.stringify(testBody);
 
-  const body1 = (await parseBody(res1)) as { accepts?: PaymentRequirement[] } | string | null;
+  console.log('HTTP request:');
+  logHttpRequest('(unauthenticated probe)', 'POST', url1, headers1, body1Text);
+  console.log('');
+
+  const t1Start = Date.now();
+  const res1 = await fetch(url1, { method: 'POST', headers: headers1, body: body1Text });
+  const res1Text = await res1.text();
   const t1Elapsed = Date.now() - t1Start;
-  console.log(`Status: ${res1.status}    (${t1Elapsed} ms)`);
+
+  console.log('HTTP response:');
+  logHttpResponse(res1.status, res1.statusText, res1.headers, res1Text, t1Elapsed);
+  console.log('');
+
+  let body1: unknown = null;
+  if (res1Text) {
+    try {
+      body1 = JSON.parse(res1Text);
+    } catch {
+      body1 = res1Text;
+    }
+  }
 
   if (res1.status !== 402) {
     console.log('Expected 402 but got a different response.');
-    console.log(JSON.stringify(body1, null, 2));
     process.exit(1);
   }
 
@@ -273,22 +332,37 @@ async function main() {
   console.log('');
 
   console.log(`--- Step 3: Retry ${testApiPath} with X-Payment ---`);
-  const t3Start = Date.now();
-  const res2 = await fetch(`${apiBase}${testApiPath}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Payment': xPayment,
-    },
-    body: JSON.stringify(testBody),
-  });
+  const url3 = `${apiBase}${testApiPath}`;
+  const headers3: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Payment': xPayment,
+  };
+  const body3Text = JSON.stringify(testBody);
 
-  const body2 = await parseBody(res2);
-  const t3Elapsed = Date.now() - t3Start;
-  console.log(`Status: ${res2.status}    (${t3Elapsed} ms)`);
-  console.log(`Response body:`);
-  console.log(JSON.stringify(body2, null, 2));
+  console.log('HTTP request:');
+  logHttpRequest('(paid retry)', 'POST', url3, headers3, body3Text);
   console.log('');
+
+  const t3Start = Date.now();
+  const res2 = await fetch(url3, { method: 'POST', headers: headers3, body: body3Text });
+  const res2Text = await res2.text();
+  const t3Elapsed = Date.now() - t3Start;
+
+  console.log('HTTP response:');
+  logHttpResponse(res2.status, res2.statusText, res2.headers, res2Text, t3Elapsed);
+  console.log('');
+
+  let body2: unknown = null;
+  if (res2Text) {
+    try {
+      body2 = JSON.parse(res2Text);
+    } catch {
+      body2 = res2Text;
+    }
+  }
+  // Keep `body2` available for downstream branches that print the parsed
+  // value (matches the original behaviour after the verbose response dump).
+  void body2;
 
   if (res2.status === 402) {
     console.log('Gateway still returned 402. Most likely the facilitator rejected the signed payment.');
