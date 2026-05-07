@@ -198,123 +198,168 @@ What the script does (the same logic any SDK / agent will do, hand-rolled here
 so you can read every line in `scripts/test-skale-e2e.ts`):
 
 1. Load `SKALE_BASE_PRIVATE_KEY` from `.claude/.env`, instantiate an
-   `ethers.Wallet`.
-2. Send the same `POST` from Step 1 (path / body come from `TEST_API_PATH` /
+   `ethers.Wallet` and a read-only `JsonRpcProvider` for SKALE Base mainnet
+   (`https://skale-base.skalenodes.com/v1/base`, chain id `1187947933`).
+2. Snapshot the wallet's USDC balance and the current SKALE head block (so we
+   can show a tight before/after delta and constrain the post-run log scan).
+3. Send the same `POST` from Step 1 (path / body come from `TEST_API_PATH` /
    `TEST_BODY` env vars, defaulting to Suno), expect `402`, find the entry
-   where `network === 'skale'`.
-3. Build an EIP-712 `TransferWithAuthorization` payload:
+   where `network === 'skale'`. Print the full requirement + signed envelope
+   so the audience can read every field.
+4. Build an EIP-712 `TransferWithAuthorization` payload:
    - `from` = wallet address
    - `to` = `payTo` from the 402 response
    - `value` = `maxAmountRequired`
    - `validAfter / validBefore` = now / now + maxTimeoutSeconds
-   - `nonce` = 32 random bytes (replay protection — facilitator will reject any
-     duplicate within the validity window)
-4. `wallet.signTypedData(domain, types, authorization)` → 65-byte signature.
+   - `nonce` = 32 random bytes (replay protection — the USDC contract enforces
+     each `(from, nonce)` pair as single-use)
+5. `wallet.signTypedData(domain, types, authorization)` → 65-byte signature.
    The domain pulls `name / version / chainId / verifyingContract` straight
    from the 402 `extra` block, so the client never has to hard-code anything.
-5. Wrap into the x402 envelope, base64 it, drop it into the `X-Payment` header,
+6. Wrap into the x402 envelope, base64 it, drop it into the `X-Payment` header,
    replay the request.
+7. After the API returns `200`, scan SKALE for the `AuthorizationUsed(authorizer,
+   nonce)` event with both topics indexed against the wallet + envelope nonce.
+   That uniquely identifies the settlement tx, so the script prints the hash,
+   the block, the explorer URL, the matched `Transfer` event, and the closing
+   USDC balance.
 
-**Real output from the 2026-05-07 run** (trimmed, full GPT payload in the
-appendix):
+**Real output from the 2026-05-07 run** (chat-completion body trimmed for
+legibility, full version in the appendix):
 
 ```text
 === SKALE X402 Real E2E Test ===
 API: https://api.acedata.cloud
+SKALE RPC: https://skale-base.skalenodes.com/v1/base
 Payer wallet: 0xd0479FA9FD8C678303d477433d24C15e3723CC1C
+Explorer (wallet): https://skale-base-explorer.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 
 --- Step 1: Request /openai/chat/completions without auth ---
-Status: 402
-Found skale payment requirement:
-  amount: 95215 (0.095215 units)
-  payTo: 0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
-  asset: 0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
-  chainId: 1187947933
+Status: 402    (235 ms)
+accepts[]: base, solana, skale
+Selected SKALE payment requirement:
+  scheme:            exact
+  amount:            95215 (0.095215 USDC)
+  payTo:             0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
+  asset (USDC):      0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
+  chainId:           1187947933
   verifyingContract: 0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
+  maxTimeoutSeconds: 3600
+  resource:          /openai/chat/completions
+  description:       AceDataCloud API call
+
+SKALE head block: 1751494
+Wallet USDC balance before: 9.624975 USDC
 
 --- Step 2: Sign EIP-712 authorization ---
-Signed payment envelope.
-  header length: 636
+Signed in 2 ms.  X-Payment header is 636 bytes.
+Signed envelope (decoded):
+  domain:
+    name:              "Bridged USDC (SKALE Bridge)"
+    version:           "2"
+    chainId:           1187947933
+    verifyingContract: 0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20
+  authorization:
+    from:        0xd0479FA9FD8C678303d477433d24C15e3723CC1C
+    to:          0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
+    value:       95215 (0.095215 USDC)
+    validAfter:  1778162995  (2026-05-07T14:09:55.000Z)
+    validBefore: 1778166595  (2026-05-07T15:09:55.000Z)
+    nonce:       0x1b1c0d07d25e427d94c95718e65ae6d5f86027fbc45ae8509fbfc5713b3a355d
+  signature:   0xf3db450e1e…1cd9e324a11b  (130/2 hex chars)
 
 --- Step 3: Retry /openai/chat/completions with X-Payment ---
-Status: 200
+Status: 200    (9815 ms)
+Response body:
 {
-  "id": "chatcmpl-DcqKgLKlVFIrrHk52tMoXTG0ki202",
-  "model": "gpt-4o-mini",
+  "id": "chatcmpl-89DwOUWUkEJZotzrUFWKjXGpEe9Eh",
   "object": "chat.completion",
-  "created": 1778150002,
-  "choices": [
-    {
-      "index": 0,
-      "finish_reason": "stop",
-      "message": {
-        "role": "assistant",
-        "content": "Hello there! How are you doing today? Hope well!"
-      }
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 14,
-    "completion_tokens": 13,
-    "total_tokens": 27,
-    "latency_checkpoint": {
-      "user_visible_ttft_ms": 216,
-      "total_duration_ms": 313
-    }
-  }
+  "model": "gpt-4o-mini",
+  "choices": [{
+    "index": 0,
+    "finish_reason": "stop",
+    "message": { "role": "assistant",
+      "content": "Hello there! I hope your day is going wonderfully well!" }
+  }],
+  "usage": { "prompt_tokens": 14, "completion_tokens": 12, "total_tokens": 26 }
 }
+
+--- Step 4: Look up the on-chain settlement on SKALE ---
+Settlement tx (AuthorizationUsed):
+  hash:      0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
+  block:     1751496
+  explorer:  https://skale-base-explorer.skalenodes.com/tx/0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
+  Transfer:  0.095215 USDC -> 0x4f0e2d3477a1b94cf33d16e442cee4733dadcee7
+Wallet USDC balance after:  9.529760 USDC  (delta -0.095215 USDC)
+
+--- Summary ---
+  402 round-trip:        235 ms
+  EIP-712 sign:          2 ms
+  paid call round-trip:  9815 ms
+  paid:                  0.095215 USDC on SKALE
+  settlement:            https://skale-base-explorer.skalenodes.com/tx/0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
 
 SKALE E2E succeeded.
 ```
 
-Things to point out while the script is running (the whole thing wraps in
-**under 1 second** end-to-end on chat completions — try not to blink):
+Things to point out while the script is running:
 
-- `total_duration_ms: 313` is OpenAI's own latency marker. The **402 → sign →
-  200** payment loop adds well under 500 ms on top — humans can't tell that the
-  request was paid for.
+- The **402 round-trip** is `235 ms`. The **EIP-712 signature** is computed
+  locally in `2 ms`. The big number (`9815 ms`) is OpenAI itself — the payment
+  loop adds well under half a second.
 - `header length: 636` — the entire payment proof is **a 636-byte HTTP header**.
   No new endpoint, no callback, no webhook.
-- `validBefore = validAfter + maxTimeoutSeconds` — if the facilitator can't
-  settle within that window, the signature simply expires. The user is never on
-  the hook for a payment that didn't deliver an API result.
+- `validBefore = validAfter + maxTimeoutSeconds` (1 hour for this endpoint) —
+  if the facilitator can't settle within that window, the signature simply
+  expires. The user is never on the hook for a payment that didn't deliver an
+  API result.
+- The script ends with **the actual settlement tx hash**, the matched
+  `Transfer` event amount (which equals `maxAmountRequired` exactly — you only
+  pay what was quoted), and the closing balance proving the `0.095215 USDC`
+  delta. Click the explorer URL on stage to land the punchline.
 
 > Heads up: this is real production. We saw exactly **one transient `502
-> upstream`** during the demo run before this success, almost certainly an
-> OpenAI proxy hiccup. If you hit one, just re-run \u2014 the failed signature is
-> tied to a specific nonce that the facilitator will not have settled (the
-> request never made it back with `200`), so you don't pay for the retry.
+> upstream`** during an earlier demo run before the success captured above,
+> almost certainly an OpenAI proxy hiccup. If you hit one, just re-run — the
+> failed signature is tied to a specific nonce that the facilitator will not
+> have settled (the request never made it back with `200`), so you don't pay
+> for the retry.
 
 ---
 
 ## Step 3 — Show the on-chain settlement
 
-Open SKALE Europa Hub explorer:
+The script already printed the settlement tx hash + a direct explorer link in
+Step 4 of its output. Click that link on stage. You'll see the USDC `Transfer`
+event matching the demo wallet (`0xd047…CC1C`) sending exactly the
+`maxAmountRequired` to AceDataCloud's collection address (`0x4F0E…cEE7`).
+
+If you'd rather show the wallet history instead of a single tx, the wallet
+page works too:
 
 ```
-https://elated-tan-skat.explorer.mainnet.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
+https://skale-base-explorer.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 ```
-
-You'll see a fresh USDC `Transfer` event from `0xd047…CC1C` (the demo wallet) to
-`0x4F0E…cEE7` (AceDataCloud's collection address) for the exact `0.095215 USDC`
-that was quoted in the 402 (or `0.052368 USDC` if you used the Suno default).
 
 The previously verified historical settlements (also in the
 [root README table](../README.md#verified-end-to-end)):
 
 - 🟨 SKALE — `POST /openai/chat/completions` — `0.020568 USDC` —
-  [`0x621b361a…7b12979`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x621b361ad78e6bb6f910dba603a4267bca92ca8748894011cced803227b12979)
+  [`0x621b361a…7b12979`](https://skale-base-explorer.skalenodes.com/tx/0x621b361ad78e6bb6f910dba603a4267bca92ca8748894011cced803227b12979)
 - 🟨 SKALE — `POST /midjourney/imagine` (turbo) — `0.025708 USDC` —
-  [`0x0e66f646…6b827d3`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x0e66f646bdfbf2e29ca8bc3bc19f252aa6109d8cf7aff1ab6836111e56b827d3)
+  [`0x0e66f646…6b827d3`](https://skale-base-explorer.skalenodes.com/tx/0x0e66f646bdfbf2e29ca8bc3bc19f252aa6109d8cf7aff1ab6836111e56b827d3)
 
 Talking points:
 
-- The transaction's `from` is **the facilitator**, not the user wallet — that's
-  why the user never holds gas. The facilitator is allowed to move USDC out of
-  the user's wallet because it presents the EIP-3009 signature.
-- On SKALE, the facilitator's gas cost is also $0 (chain is gas-free), so the
-  unit economics for very-small payments (sub-cent, fractional-cent) actually
-  work — unlike Ethereum L1 where a $0.05 payment makes no sense.
+- The on-chain `Transfer` value equals `maxAmountRequired` from the 402 —
+  exactly. The facilitator can never pull more than what the user signed for.
+- SKALE Base is **gas-free** — the chain distributes sFUEL automatically, so
+  neither the user nor the facilitator pays gas. That's what makes
+  fractional-cent USDC payments economically viable here, where they wouldn't
+  be on Ethereum L1.
+- The whole settlement tx ends up a single `transferWithAuthorization` call on
+  the bridged-USDC contract — ~120k gas equivalent, no approvals needed,
+  signature single-use.
 
 ---
 
@@ -352,6 +397,12 @@ the nonce.
 after the gateway confirms it will serve the request. If serving fails, the
 signed authorization expires unspent. Worst case: you paid for a 5xx, exactly
 the same as paying for a 5xx with a credit card.
+
+**"Who pays the gas for the on-chain settlement?"** Nobody. SKALE Base is a
+**gas-free** chain: sFUEL is auto-distributed to active EOAs on demand, so the
+settlement tx that moves your USDC costs $0 in gas regardless of who broadcasts
+it. On Base mainnet (the EVM equivalent), the facilitator pays a few
+fractions of a cent in ETH gas as part of its operating cost.
 
 **"Why USDC and not native ETH/SOL?"** USDC is a stable unit of account (the
 whole point of micropayments is predictable pricing) and EIP-3009 / SPL
