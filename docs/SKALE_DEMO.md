@@ -224,8 +224,8 @@ so you can read every line in `scripts/test-skale-e2e.ts`):
    the block, the explorer URL, the matched `Transfer` event, and the closing
    USDC balance.
 
-**Real output from the 2026-05-07 run** (chat-completion body trimmed for
-legibility, full version in the appendix):
+**Real output from the 2026-05-07 run** (response bodies are line-wrapped here
+for legibility; the script prints them verbatim):
 
 ```text
 === SKALE X402 Real E2E Test ===
@@ -235,7 +235,35 @@ Payer wallet: 0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 Explorer (wallet): https://skale-base-explorer.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 
 --- Step 1: Request /openai/chat/completions without auth ---
-Status: 402    (235 ms)
+HTTP request:
+  > (unauthenticated probe)
+  > POST https://api.acedata.cloud/openai/chat/completions
+  > Content-Type: application/json
+  > Content-Length: 84
+  >
+  > {"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hi in 10 words."}]}
+
+HTTP response:
+  < HTTP 402 Payment Required    (518 ms)
+  < access-control-allow-origin: *
+  < connection: keep-alive
+  < content-length: 1215
+  < content-type: application/json; charset=utf-8
+  < date: Thu, 07 May 2026 14:25:04 GMT
+  < server: kong/2.5.1
+  < vary: Origin
+  < x-kong-response-latency: 50
+  <
+  < {"x402Version": 2, "accepts": [
+        {"scheme": "exact", "network": "base",   "maxAmountRequired": "95215", ...},
+        {"scheme": "exact", "network": "solana", "maxAmountRequired": "95215", ...},
+        {"scheme": "exact", "network": "skale",  "maxAmountRequired": "95215",
+          "payTo": "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7",
+          "asset": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
+          "extra": {"name": "Bridged USDC (SKALE Bridge)", "version": "2",
+                    "chainId": 1187947933, "verifyingContract": "0x85889c..."}}],
+      "error": "Payment Required"}
+
 accepts[]: base, solana, skale
 Selected SKALE payment requirement:
   scheme:            exact
@@ -248,8 +276,8 @@ Selected SKALE payment requirement:
   resource:          /openai/chat/completions
   description:       AceDataCloud API call
 
-SKALE head block: 1751494
-Wallet USDC balance before: 9.624975 USDC
+SKALE head block: 1751581
+Wallet USDC balance before: 9.244115 USDC
 
 --- Step 2: Sign EIP-712 authorization ---
 Signed in 2 ms.  X-Payment header is 636 bytes.
@@ -263,52 +291,75 @@ Signed envelope (decoded):
     from:        0xd0479FA9FD8C678303d477433d24C15e3723CC1C
     to:          0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7
     value:       95215 (0.095215 USDC)
-    validAfter:  1778162995  (2026-05-07T14:09:55.000Z)
-    validBefore: 1778166595  (2026-05-07T15:09:55.000Z)
-    nonce:       0x1b1c0d07d25e427d94c95718e65ae6d5f86027fbc45ae8509fbfc5713b3a355d
-  signature:   0xf3db450e1e…1cd9e324a11b  (130/2 hex chars)
+    validAfter:  1778163906  (2026-05-07T14:25:06.000Z)
+    validBefore: 1778167506  (2026-05-07T15:25:06.000Z)
+    nonce:       0xab3d6439eb8e1a555722c145b0af83b0520d18026c9c4208f1686486df74906c
+  signature:   0x3ac74ebf28…523ad146cd1b  (130/2 hex chars)
 
 --- Step 3: Retry /openai/chat/completions with X-Payment ---
-Status: 200    (9815 ms)
-Response body:
-{
-  "id": "chatcmpl-89DwOUWUkEJZotzrUFWKjXGpEe9Eh",
-  "object": "chat.completion",
-  "model": "gpt-4o-mini",
-  "choices": [{
-    "index": 0,
-    "finish_reason": "stop",
-    "message": { "role": "assistant",
-      "content": "Hello there! I hope your day is going wonderfully well!" }
-  }],
-  "usage": { "prompt_tokens": 14, "completion_tokens": 12, "total_tokens": 26 }
-}
+HTTP request:
+  > (paid retry)
+  > POST https://api.acedata.cloud/openai/chat/completions
+  > Content-Type: application/json
+  > X-Payment: eyJ4NDAyVmVyc2lvbiI6Miwic2NoZW1l…YWQxNDZjZDFiIn19  (636 bytes base64, decoded above)
+  > Content-Length: 84
+  >
+  > {"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hi in 10 words."}]}
+
+HTTP response:
+  < HTTP 200 OK    (9819 ms)
+  < access-control-allow-origin: *
+  < connection: keep-alive
+  < content-length: 452
+  < content-type: application/json
+  < date: Thu, 07 May 2026 14:25:16 GMT
+  < server: TornadoServer/6.4.2
+  < vary: Origin
+  < via: kong/2.5.1
+  < x-kong-proxy-latency: 1996
+  < x-kong-upstream-latency: 7758
+  < x-usage-exempt: true
+  <
+  < {"id": "chatcmpl-89DrEzMbXfLVHVGSPM1bs42dLEErv",
+     "object": "chat.completion", "created": 1778163916, "model": "gpt-4o-mini",
+     "choices": [{"index": 0, "finish_reason": "stop",
+                  "message": {"role": "assistant",
+                              "content": "Hello there! I hope your day is bright and cheerful!"}}],
+     "usage": {"prompt_tokens": 14, "completion_tokens": 12, "total_tokens": 26}}
 
 --- Step 4: Look up the on-chain settlement on SKALE ---
 Settlement tx (AuthorizationUsed):
-  hash:      0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
-  block:     1751496
-  explorer:  https://skale-base-explorer.skalenodes.com/tx/0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
+  hash:      0xe36cb3808cda54fdd502a5096889a768cde2e705edd57dbd32e65bdf7e187471
+  block:     1751583
+  explorer:  https://skale-base-explorer.skalenodes.com/tx/0xe36cb3808cda54fdd502a5096889a768cde2e705edd57dbd32e65bdf7e187471
   Transfer:  0.095215 USDC -> 0x4f0e2d3477a1b94cf33d16e442cee4733dadcee7
-Wallet USDC balance after:  9.529760 USDC  (delta -0.095215 USDC)
+Wallet USDC balance after:  9.148900 USDC  (delta -0.095215 USDC)
 
 --- Summary ---
-  402 round-trip:        235 ms
+  402 round-trip:        518 ms
   EIP-712 sign:          2 ms
-  paid call round-trip:  9815 ms
+  paid call round-trip:  9819 ms
   paid:                  0.095215 USDC on SKALE
-  settlement:            https://skale-base-explorer.skalenodes.com/tx/0x1f51240f2a726ce65d6bf82de24c8429ce03b4315813631a713bf60554ce67e0
+  settlement:            https://skale-base-explorer.skalenodes.com/tx/0xe36cb3808cda54fdd502a5096889a768cde2e705edd57dbd32e65bdf7e187471
 
 SKALE E2E succeeded.
 ```
 
 Things to point out while the script is running:
 
-- The **402 round-trip** is `235 ms`. The **EIP-712 signature** is computed
-  locally in `2 ms`. The big number (`9815 ms`) is OpenAI itself — the payment
+- Each HTTP exchange is dumped **request-line + every header + body** with `>`
+  for outgoing and `<` for incoming. There is **nothing hidden on the wire** —
+  on the unauthenticated probe the only header we send is `Content-Type`, and
+  on the paid retry the only added header is `X-Payment`. No Authorization, no
+  cookie, no API key.
+- On the 200 response, `via: kong/2.5.1` + `x-kong-proxy-latency` / `x-kong-upstream-latency`
+  show that this is a real production gateway hop, not a fixture.
+- The **402 round-trip** is `518 ms`. The **EIP-712 signature** is computed
+  locally in `2 ms`. The big number (`9819 ms`) is OpenAI itself — the payment
   loop adds well under half a second.
-- `header length: 636` — the entire payment proof is **a 636-byte HTTP header**.
-  No new endpoint, no callback, no webhook.
+- `X-Payment` shows up in the request log as the abbreviated base64 (the
+  full envelope is already pretty-printed in Step 2, so we don't dump 636
+  bytes of base64 a second time).
 - `validBefore = validAfter + maxTimeoutSeconds` (1 hour for this endpoint) —
   if the facilitator can't settle within that window, the signature simply
   expires. The user is never on the hook for a payment that didn't deliver an
