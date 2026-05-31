@@ -126,6 +126,24 @@ The helper is idempotent — re-running it after the allowance is already at
 or above the requested amount returns `{"skipped": true}` without sending a
 transaction.
 
+### Verified live on Base mainnet (2026-05-31)
+
+End-to-end runs through `https://facilitator.acedata.cloud` against three
+metered chat endpoints, payer wallet
+[`0x5d4f08D5c2bb60703284bc06671Eb680fA41B105`](https://basescan.org/address/0x5d4f08D5c2bb60703284bc06671Eb680fA41B105):
+
+| API | Model | Credits charged | USDC settled | Tx |
+| --- | --- | --- | --- | --- |
+| `POST /v1/chat/completions` | claude-sonnet-4-5 | 0.001587893 | 0.000151 | [`0xc1f90cc6…b093dd8`](https://basescan.org/tx/0xc1f90cc6c2d71b50ab863ce3ac6a940a0c30291c156b71ba839cdfef3b093dd8) |
+| `POST /openai/chat/completions` | gpt-5.5 | 0.001427432 | 0.000135 | [`0xda8f0ff0…fcca57`](https://basescan.org/tx/0xda8f0ff09aeccd8b175188984b3f2d1b84b9c78d933625dd118dd8feeafcca57) |
+| `POST /glm/chat/completions` | glm-4.7 | 0.002753977 | 0.000262 | [`0xae9bba18…7c5dda`](https://basescan.org/tx/0xae9bba183545283d3b67c245f41f840b948c4141d90a437ffb978ebfc07c5dda) |
+
+Each call advertised both `exact` and `upto`; the handler picked `upto`, the
+worker emitted an `X-Usage-Exempt` placeholder on the first `/record`, and the
+facilitator settled at the actual measured cost on the worker's later
+`/record`. Each settled amount matches the per-model JSONLogic cost rule in
+the gateway DB (within ±1 atomic for rounding).
+
 ## Development
 
 ```bash
