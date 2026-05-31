@@ -5,11 +5,12 @@
  *   1. POST without auth → 402 with `accepts: [exact, upto]`
  *   2. Build PermitWitnessTransferFrom typed data → sign with the payer wallet
  *   3. Retry with `X-Payment` header → 200 + worker-served chat response
- *   4. Print the gateway-supplied trace ID and (later) the BaseScan settle tx
+ *   4. Print the gateway-supplied trace ID and settlement hints
  *
  * Prereqs:
- *   - `X402B_BASE_PAYER_PRIVATE_KEY` in env (auto-loaded from `.claude/.env`)
- *   - One-time `approvePermit2` already run for the payer + USDC + Base
+ *   - Base: `X402B_BASE_PAYER_PRIVATE_KEY` in env (auto-loaded from `.claude/.env`)
+ *   - SKALE: `SKALE_BASE_PRIVATE_KEY` in env
+ *   - One-time `approvePermit2` already run for the payer + USDC + target chain
  *
  * Run: `cd typescript && npx tsx scripts/test-upto-e2e.ts`
  */
@@ -42,6 +43,11 @@ loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
 loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
 const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
+const NETWORK = (process.env.X402_UPTO_NETWORK || 'base').toLowerCase();
+if (!['base', 'skale'].includes(NETWORK)) {
+  console.error(`ERROR: X402_UPTO_NETWORK must be "base" or "skale", got ${NETWORK}`);
+  process.exit(1);
+}
 const TEST_API_PATH = process.env.TEST_API_PATH || '/v1/chat/completions';
 const TEST_BODY = process.env.TEST_BODY
   ? JSON.parse(process.env.TEST_BODY)
@@ -51,11 +57,10 @@ const TEST_BODY = process.env.TEST_BODY
       max_tokens: 40,
     };
 
-const rawKey = process.env.X402B_BASE_PAYER_PRIVATE_KEY?.trim();
+const keyEnvName = NETWORK === 'skale' ? 'SKALE_BASE_PRIVATE_KEY' : 'X402B_BASE_PAYER_PRIVATE_KEY';
+const rawKey = process.env[keyEnvName]?.trim();
 if (!rawKey) {
-  console.error(
-    'ERROR: X402B_BASE_PAYER_PRIVATE_KEY is missing. Add it to .claude/.env or PlatformBackend/.env.'
-  );
+  console.error(`ERROR: ${keyEnvName} is missing. Add it to .claude/.env or PlatformBackend/.env.`);
   process.exit(1);
 }
 const PRIVATE_KEY = rawKey.startsWith('0x') ? rawKey : `0x${rawKey}`;
@@ -84,8 +89,9 @@ function makeWalletProvider(privateKey: string): {
 
 async function main(): Promise<void> {
   const { provider, address } = makeWalletProvider(PRIVATE_KEY);
-  console.log('=== Live X402 upto E2E (Base mainnet) ===');
+  console.log(`=== Live X402 upto E2E (${NETWORK}) ===`);
   console.log(`Payer wallet: ${address}`);
+  console.log(`Network:      ${NETWORK}`);
   console.log(`Endpoint:     POST ${API_BASE}${TEST_API_PATH}\n`);
 
   console.log('--- Step 1: POST without auth → expect 402 ---');
@@ -102,12 +108,10 @@ async function main(): Promise<void> {
   const body402 = (await res1.json()) as { accepts: PaymentRequirement[] };
   console.log(`✅ Got 402 with ${body402.accepts.length} accept entries`);
 
-  const upto = body402.accepts.find(
-    (a) => a.network === 'base' && a.scheme === 'upto'
-  );
+  const upto = body402.accepts.find((a) => a.network === NETWORK && a.scheme === 'upto');
   if (!upto) {
     console.error(
-      `ERROR: no base/upto accept in 402. Available: ${body402.accepts
+      `ERROR: no ${NETWORK}/upto accept in 402. Available: ${body402.accepts
         .map((a) => `${a.network}/${a.scheme}`)
         .join(', ')}`
     );
@@ -118,6 +122,7 @@ async function main(): Promise<void> {
   console.log(`   Ceiling:  ${upto.maxAmountRequired} atomic (${ceiling} USDC)`);
   console.log(`   PayTo:    ${upto.payTo}`);
   console.log(`   PayUSDC:  ${upto.asset}`);
+  console.log(`   ChainId:  ${upto.extra?.chainId ?? '<missing>'}`);
   console.log(`   Facilitator: ${upto.extra?.facilitatorAddress}\n`);
 
   console.log('--- Step 2: Sign Permit2 PermitWitnessTransferFrom ---');
@@ -156,7 +161,7 @@ async function main(): Promise<void> {
   if (res2.status === 200) {
     console.log('✅✅✅ Live upto E2E SUCCESS.');
     console.log(
-      'Settlement is deferred — check CLS or BaseScan for the actual /record settle tx in ~15s.'
+      'Settlement is deferred — check CLS or the target chain explorer for the actual /record settle tx in ~15s.'
     );
   } else {
     console.error(`⚠️  Unexpected status ${res2.status}`);
