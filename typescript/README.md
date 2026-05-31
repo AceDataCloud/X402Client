@@ -5,7 +5,9 @@
 
 Every [AceDataCloud](https://platform.acedata.cloud) API that costs money (chat completions, image generation, video generation, music generation, web search, …) now speaks the [x402 protocol](https://x402.org). This package ships the only piece the SDK can't do by itself: signing an `X-Payment` header when the server returns `402 Payment Required`. It plugs straight into [`@acedatacloud/sdk`](https://github.com/AceDataCloud/SDK) as a `paymentHandler`.
 
-- 🟦 **Base** — USDC (ERC-20) via EIP-3009 `transferWithAuthorization`
+- 🟦 **Base** — USDC (ERC-20). Two schemes:
+  - `exact` (EIP-3009 `transferWithAuthorization`) for fixed-price endpoints
+  - `upto` (Uniswap Permit2 `PermitWitnessTransferFrom`) for token-metered chat APIs — sign once over a ceiling, the facilitator settles the actual cost
 - 🟪 **Solana** — USDC (SPL) via signed transfer
 - 🟨 **SKALE** — USDC (bridged) via EIP-3009
 
@@ -64,6 +66,7 @@ const client = new AceDataCloud({
     network: 'base',                // or 'skale'
     evmProvider: window.ethereum,   // any EIP-1193 provider works
     evmAddress: '0xYourAddress...',
+    preferScheme: 'upto',           // for chat APIs; falls back to 'exact' if upto isn't offered
   }),
 });
 
@@ -74,6 +77,33 @@ const res = await client.openai.chat.completions.create({
 });
 console.log(res.choices[0].message.content);
 ```
+
+> When `preferScheme` is omitted the handler picks whatever the server lists first.
+> Chat APIs advertise both `exact` and `upto`; image / video / music APIs currently advertise only `exact`.
+
+#### One-time Permit2 approval (`upto` only)
+
+Before the first `upto` payment, the payer wallet must approve Permit2 to pull its USDC. Either run the bundled CLI:
+
+```bash
+cd typescript
+npx tsx scripts/approve-permit2.ts --network base
+# expects X402_PRIVATE_KEY or X402B_BASE_PAYER_PRIVATE_KEY in env / .claude/.env
+```
+
+or call it programmatically:
+
+```ts
+import { approvePermit2 } from '@acedatacloud/x402-client';
+
+await approvePermit2({
+  rpcUrl: 'https://mainnet.base.org',
+  privateKey: process.env.X402B_BASE_PAYER_PRIVATE_KEY!,
+  tokenAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+});
+```
+
+The helper is **idempotent** — re-running it after the allowance is already at or above the requested amount returns `{ skipped: true }` without sending a transaction. Required exactly once per `(payer, token, chain)`.
 
 ### Solana
 
@@ -115,13 +145,25 @@ Every AceDataCloud endpoint the SDK exposes (`openai.chat`, `images`, `audio`, `
 If you need to produce an `X-Payment` envelope outside the SDK — for example in a custom fetch wrapper, tests, or an agent framework — the raw signing primitives are exported directly:
 
 ```ts
-import { signSolanaPayment, signEVMPayment } from '@acedatacloud/x402-client';
+import {
+  signSolanaPayment,
+  signEVMPayment,
+  signEVMUptoPayment,
+} from '@acedatacloud/x402-client';
 
-const envelope = await signSolanaPayment(paymentRequirement, wallet);
-const header = btoa(JSON.stringify(envelope));
+// Solana
+const solEnvelope = await signSolanaPayment(req, solanaWallet);
+
+// Base / SKALE — exact scheme (fixed price)
+const evmEnvelope = await signEVMPayment(req, evmProvider, evmAddress);
+
+// Base — upto scheme (metered)
+const uptoEnvelope = await signEVMUptoPayment(req, evmProvider, evmAddress);
+
+const header = btoa(JSON.stringify(uptoEnvelope));
 ```
 
-The live e2e scripts under `scripts/` use this low-level entry point to settle real USDC on chain. For application code, prefer the SDK path above.
+The live e2e scripts under `scripts/` use these low-level entry points to settle real USDC on chain. For application code, prefer the SDK path above.
 
 ---
 
@@ -134,9 +176,13 @@ git clone https://github.com/AceDataCloud/X402Client.git
 cd X402Client
 npm install
 
-# Base — EVM private key
+# Base — EVM private key, exact scheme
 export BASE_TEST_PRIVATE_KEY=0x...
 node --experimental-strip-types scripts/test-real-e2e.ts
+
+# Base — EVM private key, upto scheme (chat API, metered)
+export X402B_BASE_PAYER_PRIVATE_KEY=0x...
+node --experimental-strip-types scripts/test-upto-e2e.ts
 
 # Solana — base58-encoded secret key
 export SOLANA_TEST_PRIVATE_KEY=...
@@ -170,13 +216,19 @@ node --experimental-strip-types scripts/test-api-billing-scenarios.ts
 
 ## Proof of real on-chain settlement
 
-Latest successful live runs on `2026-04-19`:
+Latest successful live runs on `2026-05-31` (Base, `upto` scheme — three different metered chat models settled with the actual cost, not the ceiling):
 
-- **Base** — tx [`0x11313652...5327ec`](https://basescan.org/tx/0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec)
-- **Solana** — tx [`3qB25xsy...eBVzr`](https://explorer.solana.com/tx/3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr?cluster=mainnet-beta)
-- **SKALE** — tx [`0xc6c7affe...aae42e1`](https://skale-base-explorer.skalenodes.com/tx/0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1)
+- `claude-sonnet-4-5` → [`0xc1f90cc6…b093dd8`](https://basescan.org/tx/0xc1f90cc6c2d71b50ab863ce3ac6a940a0c30291c156b71ba839cdfef3b093dd8) (151 atomic USDC)
+- `gpt-5.5` → [`0xda8f0ff0…fcca57`](https://basescan.org/tx/0xda8f0ff09aeccd8b175188984b3f2d1b84b9c78d933625dd118dd8feeafcca57) (135 atomic USDC)
+- `glm-4.7` → [`0xae9bba18…7c5dda`](https://basescan.org/tx/0xae9bba183545283d3b67c245f41f840b948c4141d90a437ffb978ebfc07c5dda) (262 atomic USDC)
 
-All three chains are live. All settlements flow through our own facilitator at `https://facilitator.acedata.cloud`.
+Previous `exact`-scheme runs (`2026-04-19`):
+
+- **Base** — tx [`0x11313652…5327ec`](https://basescan.org/tx/0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec)
+- **Solana** — tx [`3qB25xsy…eBVzr`](https://explorer.solana.com/tx/3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr?cluster=mainnet-beta)
+- **SKALE** — tx [`0xc6c7affe…aae42e1`](https://skale-base-explorer.skalenodes.com/tx/0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1)
+
+All chains live; all settlements flow through our own facilitator at `https://facilitator.acedata.cloud`.
 
 ---
 
@@ -211,7 +263,7 @@ At the time of writing, **121 of 122 public APIs have x402 pricing configured** 
 
 ## Python
 
-There is currently no Python x402 signer. The Python SDK (`acedatacloud`) already exposes the same `payment_handler` hook as the TypeScript SDK — any callable that returns `{"headers": {"X-Payment": "<base64>"}}` works. A Python port of the signing logic in this package is tracked as future work; contributions are welcome.
+A byte-compatible Python port is published as [`acedatacloud-x402`](https://pypi.org/project/acedatacloud-x402/) and lives in [`../python/`](../python/) — same `exact` + `upto` signers, same `approve_permit2` helper, same on-chain test vectors.
 
 ---
 

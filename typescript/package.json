@@ -21,6 +21,10 @@
     "./evm": {
       "import": "./dist/evm.js",
       "types": "./dist/evm.d.ts"
+    },
+    "./approve-permit2": {
+      "import": "./dist/approvePermit2.js",
+      "types": "./dist/approvePermit2.d.ts"
     }
   },
   "files": [
@@ -35,15 +39,20 @@
     "prepublishOnly": "node scripts/set-date-version.mjs && npm run build"
   },
   "peerDependencies": {
-    "@solana/web3.js": "^1.90.0"
+    "@solana/web3.js": "^1.90.0",
+    "ethers": "^6.0.0"
   },
   "peerDependenciesMeta": {
     "@solana/web3.js": {
+      "optional": true
+    },
+    "ethers": {
       "optional": true
     }
   },
   "devDependencies": {
     "@solana/web3.js": "^1.95.0",
+    "ethers": "^6.13.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   },
