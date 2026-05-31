@@ -80,6 +80,52 @@ envelope = sign_solana_payment(requirement, solana_signer)    # dict
 # base64-encode json(envelope) → X-Payment header value
 ```
 
+## Metered billing — the `upto` scheme
+
+For APIs whose true cost is only known after the response (chat completions,
+image edits, etc.) AceDataCloud advertises an extra `upto` accept entry
+alongside `exact`. `upto` uses Uniswap Permit2 to authorize a **ceiling**;
+the server settles the actual amount at `/record` time (which may be `0`).
+
+```python
+from acedatacloud_x402 import (
+    EVMAccountSigner,
+    create_x402_payment_handler,
+)
+
+client = AceDataCloud(
+    payment_handler=create_x402_payment_handler(
+        network="base",
+        evm_signer=EVMAccountSigner.from_private_key("0x..."),
+        prefer_scheme="upto",   # opt-in; defaults to whatever the server lists first
+    ),
+)
+```
+
+A one-time on-chain `ERC20.approve(Permit2, ∞)` is required before the first
+`upto` payment. Use the bundled CLI:
+
+```bash
+pip install 'acedatacloud-x402[cli]'
+X402_PRIVATE_KEY=0x... acedatacloud-x402 approve-permit2 --network base
+```
+
+or programmatically:
+
+```python
+from acedatacloud_x402 import EVMAccountSigner, approve_permit2
+
+approve_permit2(
+    rpc_url="https://mainnet.base.org",
+    signer=EVMAccountSigner.from_private_key("0x..."),
+    token_address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC on Base
+)
+```
+
+The helper is idempotent — re-running it after the allowance is already at
+or above the requested amount returns `{"skipped": true}` without sending a
+transaction.
+
 ## Development
 
 ```bash

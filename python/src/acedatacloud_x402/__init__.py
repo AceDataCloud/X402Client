@@ -17,11 +17,19 @@ header. The SDK retries the request transparently.
 """
 
 from .handler import create_x402_payment_handler
-from .signing.evm import EVMAccountSigner, sign_evm_payment
+from .signing.evm import (
+    PERMIT2_ADDRESS,
+    X402_UPTO_PERMIT2_PROXY_ADDRESS,
+    EVMAccountSigner,
+    approve_permit2,
+    sign_evm_payment,
+    sign_evm_upto_payment,
+)
 from .signing.solana import SolanaKeypairSigner, sign_solana_payment
 from .types import (
     EVMAuthorization,
     EVMPayload,
+    EVMUptoPayload,
     PaymentRequiredResponse,
     PaymentRequirement,
     SolanaPayload,
@@ -32,16 +40,21 @@ from .types import (
 __all__ = [
     "create_x402_payment_handler",
     "sign_evm_payment",
+    "sign_evm_upto_payment",
     "sign_solana_payment",
+    "approve_permit2",
     "EVMAccountSigner",
     "SolanaKeypairSigner",
     "EVMAuthorization",
     "EVMPayload",
+    "EVMUptoPayload",
     "PaymentRequiredResponse",
     "PaymentRequirement",
     "SolanaPayload",
     "X402PaymentEnvelope",
     "X402PaymentHandlerOptions",
+    "PERMIT2_ADDRESS",
+    "X402_UPTO_PERMIT2_PROXY_ADDRESS",
 ]
 
 __version__ = "0.1.0"

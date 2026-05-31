@@ -13,7 +13,7 @@ import json
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from .signing.evm import EVMAccountSigner, sign_evm_payment
+from .signing.evm import EVMAccountSigner, sign_evm_payment, sign_evm_upto_payment
 from .signing.solana import SolanaKeypairSigner, sign_solana_payment
 from .types import Network, PaymentRequirement, X402PaymentEnvelope
 
@@ -26,12 +26,24 @@ def _encode_payment_header(envelope: X402PaymentEnvelope) -> str:
 
 
 def _select_requirement(
-    accepts: Sequence[PaymentRequirement], network: str
+    accepts: Sequence[PaymentRequirement],
+    network: str,
+    *,
+    prefer_scheme: str | None = None,
 ) -> PaymentRequirement | None:
-    for req in accepts:
-        if req.get("network") == network:
-            return req
-    return None
+    """Pick the best matching accept entry for ``network``.
+
+    If ``prefer_scheme`` is provided and a match exists, that variant wins.
+    Otherwise the first network match is returned (preserving server ordering).
+    """
+    matches = [req for req in accepts if req.get("network") == network]
+    if not matches:
+        return None
+    if prefer_scheme:
+        for req in matches:
+            if req.get("scheme") == prefer_scheme:
+                return req
+    return matches[0]
 
 
 def create_x402_payment_handler(
@@ -40,6 +52,7 @@ def create_x402_payment_handler(
     evm_signer: EVMAccountSigner | None = None,
     solana_signer: SolanaKeypairSigner | None = None,
     rpc_url: str | None = None,
+    prefer_scheme: str | None = None,
 ) -> Callable[[dict[str, Any]], PaymentHandlerResult]:
     """Build a ``payment_handler`` function the SDK can invoke on 402.
 
@@ -48,6 +61,10 @@ def create_x402_payment_handler(
         evm_signer: Required for ``base`` / ``skale``.
         solana_signer: Required for ``solana``.
         rpc_url: Optional Solana RPC override.
+        prefer_scheme: When the server offers multiple schemes for the chosen
+            network, prefer this one (e.g. ``"upto"`` for chat APIs with
+            metered billing, ``"exact"`` for fixed-price endpoints). Falls
+            back to the first entry the server returns.
 
     Returns:
         A callable ``(ctx) -> {"headers": {"X-Payment": "..."}}`` suitable
@@ -61,7 +78,7 @@ def create_x402_payment_handler(
 
     def handler(ctx: dict[str, Any]) -> PaymentHandlerResult:
         accepts: Sequence[PaymentRequirement] = ctx.get("accepts") or []
-        requirement = _select_requirement(accepts, network)
+        requirement = _select_requirement(accepts, network, prefer_scheme=prefer_scheme)
         if requirement is None:
             available = ", ".join(str(r.get("network")) for r in accepts) or "<none>"
             raise RuntimeError(
@@ -73,7 +90,10 @@ def create_x402_payment_handler(
             envelope = sign_solana_payment(requirement, solana_signer, rpc_url=rpc_url)
         else:
             assert evm_signer is not None  # guarded above
-            envelope = sign_evm_payment(requirement, evm_signer)
+            if requirement.get("scheme") == "upto":
+                envelope = sign_evm_upto_payment(requirement, evm_signer)
+            else:
+                envelope = sign_evm_payment(requirement, evm_signer)
 
         return {"headers": {"X-Payment": _encode_payment_header(envelope)}}
 
