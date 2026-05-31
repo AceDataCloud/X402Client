@@ -15,6 +15,10 @@ class PaymentRequirementExtra(TypedDict, total=False):
     computeUnitLimit: int
     computeUnitPriceMicroLamports: int
     rpcUrl: str
+    # upto-scheme additions (Permit2-based metered billing on EVM):
+    permit2Address: str
+    proxyAddress: str
+    facilitatorAddress: str
 
 
 class PaymentRequirement(TypedDict, total=False):
@@ -50,6 +54,19 @@ class EVMAuthorization(TypedDict):
 
 class EVMPayload(TypedDict):
     authorization: dict[str, str]  # uses "from" key, not from_
+    signature: str
+
+
+class EVMUptoPayload(TypedDict):
+    """Wire payload for the ``upto`` scheme — a Permit2 ``PermitWitnessTransferFrom``
+    authorization plus the EIP-712 signature over it.
+
+    The facilitator parses ``payload.payload.permit2Authorization`` (mirroring
+    the field names defined in
+    `FacilitatorX402.x402f.chain_handlers.base_upto._parse_upto_payload`).
+    """
+
+    permit2Authorization: dict[str, Any]
     signature: str
 
 
