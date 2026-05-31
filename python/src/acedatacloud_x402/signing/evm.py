@@ -174,13 +174,13 @@ def _build_upto_typed_data(
                 {"name": "spender", "type": "address"},
                 {"name": "nonce", "type": "uint256"},
                 {"name": "deadline", "type": "uint256"},
-                {"name": "witness", "type": "X402Witness"},
+                {"name": "witness", "type": "Witness"},
             ],
             "TokenPermissions": [
                 {"name": "token", "type": "address"},
                 {"name": "amount", "type": "uint256"},
             ],
-            "X402Witness": [
+            "Witness": [
                 {"name": "to", "type": "address"},
                 {"name": "facilitator", "type": "address"},
                 {"name": "validAfter", "type": "uint256"},
