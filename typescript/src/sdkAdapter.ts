@@ -19,7 +19,7 @@
  *   await client.openai.chat.completions.create({ ... });
  */
 
-import { signEVMPayment } from './evm.js';
+import { signEVMPayment, signEVMUptoPayment } from './evm.js';
 import { signSolanaPayment } from './solana.js';
 import type {
   EVMProvider,
@@ -38,6 +38,13 @@ export interface X402PaymentHandlerOptions {
   evmProvider?: EVMProvider;
   /** EVM account address (required if network=base/skale). */
   evmAddress?: string;
+  /**
+   * When the server offers multiple schemes for the chosen network, prefer
+   * this one. Use `"upto"` for metered chat APIs (Permit2-based, settles for
+   * the actual usage) and `"exact"` for fixed-price endpoints. Falls back to
+   * the first available accept entry when the preferred scheme is absent.
+   */
+  preferScheme?: 'exact' | 'upto';
 }
 
 /** Minimal shape of the SDK's PaymentHandler context. Duplicated here
@@ -63,9 +70,16 @@ function encodePaymentHeader(envelope: X402PaymentEnvelope): string {
 
 function selectRequirement(
   accepts: PaymentRequirement[],
-  network: string
+  network: string,
+  preferScheme?: string
 ): PaymentRequirement | undefined {
-  return accepts.find((r) => r.network === network);
+  const matches = accepts.filter((r) => r.network === network);
+  if (matches.length === 0) return undefined;
+  if (preferScheme) {
+    const preferred = matches.find((r) => r.scheme === preferScheme);
+    if (preferred) return preferred;
+  }
+  return matches[0];
 }
 
 /**
@@ -75,7 +89,7 @@ function selectRequirement(
 export function createX402PaymentHandler(
   options: X402PaymentHandlerOptions
 ): (ctx: SdkPaymentHandlerContext) => Promise<SdkPaymentHandlerResult> {
-  const { network, solanaWallet, evmProvider, evmAddress } = options;
+  const { network, solanaWallet, evmProvider, evmAddress, preferScheme } = options;
 
   if (network === 'solana' && !solanaWallet) {
     throw new Error('solanaWallet is required when network="solana"');
@@ -85,7 +99,7 @@ export function createX402PaymentHandler(
   }
 
   return async function x402PaymentHandler(ctx: SdkPaymentHandlerContext) {
-    const requirement = selectRequirement(ctx.accepts, network);
+    const requirement = selectRequirement(ctx.accepts, network, preferScheme);
     if (!requirement) {
       const available = ctx.accepts.map((a) => a.network).join(', ') || '<none>';
       throw new Error(
@@ -96,6 +110,8 @@ export function createX402PaymentHandler(
     let envelope: X402PaymentEnvelope;
     if (network === 'solana') {
       envelope = await signSolanaPayment(requirement, solanaWallet!);
+    } else if (requirement.scheme === 'upto') {
+      envelope = await signEVMUptoPayment(requirement, evmProvider!, evmAddress!);
     } else {
       envelope = await signEVMPayment(requirement, evmProvider!, evmAddress!);
     }

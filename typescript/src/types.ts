@@ -21,6 +21,10 @@ export interface PaymentRequirement {
     computeUnitLimit?: number;
     computeUnitPriceMicroLamports?: number;
     rpcUrl?: string;
+    // Fields used by the `upto` (Permit2) scheme:
+    facilitatorAddress?: string;
+    proxyAddress?: string;
+    permit2Address?: string;
   };
 }
 
@@ -36,7 +40,7 @@ export interface X402PaymentEnvelope {
   x402Version: number;
   scheme: string;
   network: string;
-  payload: SolanaPayload | EVMPayload;
+  payload: SolanaPayload | EVMPayload | EVMUptoPayload;
 }
 
 /** Solana payload in wallet-fee-payer mode: just the on-chain transaction signature. */
@@ -44,7 +48,7 @@ export interface SolanaPayload {
   signature: string;
 }
 
-/** EVM payload: EIP-712 authorization + ECDSA signature. */
+/** EVM payload (`exact` scheme): EIP-3009 TransferWithAuthorization + ECDSA signature. */
 export interface EVMPayload {
   authorization: EVMAuthorization;
   signature: string;
@@ -57,6 +61,21 @@ export interface EVMAuthorization {
   validAfter: string;
   validBefore: string;
   nonce: string;
+}
+
+/** EVM payload (`upto` scheme): Permit2 PermitWitnessTransferFrom + ECDSA signature. */
+export interface EVMUptoPayload {
+  permit2Authorization: Permit2WitnessAuthorization;
+  signature: string;
+}
+
+export interface Permit2WitnessAuthorization {
+  from: string;
+  spender: string;
+  nonce: string;
+  deadline: string;
+  permitted: { token: string; amount: string };
+  witness: { to: string; facilitator: string; validAfter: string };
 }
 
 /** Wallet adapter interface for Solana. */
