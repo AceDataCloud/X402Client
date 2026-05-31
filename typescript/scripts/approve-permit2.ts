@@ -9,8 +9,9 @@
  * Loads the payer key from (in order):
  *   1. `--private-key <hex>`
  *   2. `$X402_PRIVATE_KEY`
- *   3. `$X402B_BASE_PAYER_PRIVATE_KEY` (matches the other e2e scripts)
- *   4. `.claude/.env`, `PlatformBackend/.env` (auto-loaded if present)
+ *   3. `$SKALE_BASE_PRIVATE_KEY` when `--network skale`
+ *   4. `$X402B_BASE_PAYER_PRIVATE_KEY` (matches the Base e2e scripts)
+ *   5. `.claude/.env`, `PlatformBackend/.env` (auto-loaded if present)
  *
  * Idempotent: skips the broadcast if the allowance is already sufficient.
  */
@@ -52,7 +53,7 @@ const USDC_BY_NETWORK: Record<string, string> = {
 const DEFAULT_RPC: Record<string, string> = {
   base: 'https://mainnet.base.org',
   'base-sepolia': 'https://sepolia.base.org',
-  skale: 'https://mainnet.skalenodes.com/v1/elated-tan-skat',
+  skale: 'https://skale-base.skalenodes.com/v1/base',
 };
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -89,10 +90,11 @@ async function main(): Promise<void> {
   const privateKey =
     args['private-key'] ||
     process.env.X402_PRIVATE_KEY ||
+    (network === 'skale' ? process.env.SKALE_BASE_PRIVATE_KEY : undefined) ||
     process.env.X402B_BASE_PAYER_PRIVATE_KEY;
   if (!privateKey) {
     console.error(
-      'error: missing private key. Pass --private-key or set X402_PRIVATE_KEY / X402B_BASE_PAYER_PRIVATE_KEY.'
+      'error: missing private key. Pass --private-key or set X402_PRIVATE_KEY / SKALE_BASE_PRIVATE_KEY / X402B_BASE_PAYER_PRIVATE_KEY.'
     );
     process.exit(2);
   }
