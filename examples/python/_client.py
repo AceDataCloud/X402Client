@@ -23,10 +23,14 @@ def build_client(network: str = "base") -> AceDataCloud:
 
 
 def ask(client: AceDataCloud, question: str, model: str = "gpt-4o-mini") -> str:
-    """One paid chat-completion call against AceData Cloud."""
+    """One paid chat-completion call against AceData Cloud.
+
+    The Python SDK returns a plain dict (not an OpenAI-style object), so we
+    index into it rather than using attribute access.
+    """
     res = client.openai.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": question}],
         max_tokens=300,
     )
-    return res.choices[0].message.content
+    return res["choices"][0]["message"]["content"]

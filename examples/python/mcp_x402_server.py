@@ -26,8 +26,9 @@ def ai_answer(question: str) -> str:
 @mcp.tool()
 def generate_image(prompt: str) -> str:
     """Generate an image from a prompt and return its URL (paid per call)."""
-    task = client.images.generate(provider="nano-banana", prompt=prompt)
-    return str(task.wait())
+    res = client.images.generate(provider="nano-banana", prompt=prompt)
+    data = res.get("data") or []
+    return data[0]["image_url"] if data else str(res)
 
 
 if __name__ == "__main__":

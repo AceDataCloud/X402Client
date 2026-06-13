@@ -22,9 +22,9 @@ def ai_answer(question: str) -> str:
 @tool
 def generate_image(prompt: str) -> str:
     """Generate an image from a prompt and return its URL (paid per call)."""
-    task = client.images.generate(provider="nano-banana", prompt=prompt)
-    result = task.wait()
-    return str(result)
+    res = client.images.generate(provider="nano-banana", prompt=prompt)
+    data = res.get("data") or []
+    return data[0]["image_url"] if data else str(res)
 
 
 TOOLS = [ai_answer, generate_image]
