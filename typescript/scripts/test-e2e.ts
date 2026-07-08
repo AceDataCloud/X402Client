@@ -10,7 +10,7 @@
  *   node dist/scripts/test-e2e.js
  */
 
-const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
+const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
 
 async function testStep1_Get402() {
   console.log('=== Step 1: Request without auth → expect 402 ===\n');

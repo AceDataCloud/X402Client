@@ -42,7 +42,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
 loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
-const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
+const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
 const NETWORK = (process.env.X402_UPTO_NETWORK || 'base').toLowerCase();
 if (!['base', 'skale'].includes(NETWORK)) {
   console.error(`ERROR: X402_UPTO_NETWORK must be "base" or "skale", got ${NETWORK}`);

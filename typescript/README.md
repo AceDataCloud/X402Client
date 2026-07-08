@@ -21,7 +21,7 @@ All three networks settle through our production facilitator at **`https://facil
 SDK call (no Bearer token)
       │
       ▼
- api.acedata.cloud  ── 402 Payment Required + accepts[] ──▶  SDK
+ x402.acedata.cloud ── 402 Payment Required + accepts[] ──▶  SDK
                                                              │
                                               paymentHandler │ (this package)
                                                              ▼

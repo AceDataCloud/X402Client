@@ -16,7 +16,7 @@ def _fake_requirement() -> dict:
         "network": "base",
         "maxAmountRequired": "95215",
         "maxTimeoutSeconds": 120,
-        "resource": "https://api.acedata.cloud/openai/chat/completions",
+        "resource": "https://x402.acedata.cloud/openai/chat/completions",
         "description": "chat",
         "payTo": "0x4d2f00Dac0aCb02C7211cBDe2DbE9d86D7B7b2F2",
         "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -62,7 +62,7 @@ def test_handler_produces_x_payment_header():
     )
     result = handler(
         {
-            "url": "https://api.acedata.cloud/openai/chat/completions",
+            "url": "https://x402.acedata.cloud/openai/chat/completions",
             "method": "POST",
             "accepts": [_fake_requirement()],
         }
