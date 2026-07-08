@@ -5,7 +5,7 @@
 
 Each function_tool call costs USDC on-chain — no API key is provisioned for the
 agent. Point the agent's own model at AceData too by setting its base_url to
-https://api.acedata.cloud and reusing the same wallet via the SDK.
+https://x402.acedata.cloud and reusing the same wallet via the SDK.
 """
 
 import asyncio

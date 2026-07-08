@@ -45,7 +45,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
 loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
-const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
+const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
 const SOLANA_RPC = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const PAYER_PRIVATE_KEY = process.env.X402B_SOLANA_PAYER_PRIVATE_KEY?.trim();
 const FACILITATOR_ADDRESS =

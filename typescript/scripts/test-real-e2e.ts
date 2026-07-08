@@ -32,7 +32,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
 loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
-const API_BASE = process.env.API_BASE || 'https://api.acedata.cloud';
+const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
 const TEST_API_PATH = process.env.TEST_API_PATH || '/suno/audios';
 const TEST_BODY = process.env.TEST_BODY
   ? JSON.parse(process.env.TEST_BODY)

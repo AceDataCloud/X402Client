@@ -95,7 +95,7 @@ interface ScenarioResult {
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const x402Root = resolve(scriptDir, '..');
 const monorepoRoot = resolve(x402Root, '..');
-const apiBase = process.env.API_BASE || 'https://api.acedata.cloud';
+const apiBase = process.env.API_BASE || 'https://x402.acedata.cloud';
 
 function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;

@@ -5,7 +5,7 @@
 > private key and `curl` / one TypeScript script.
 
 This is the script we run on stage. Every command here was executed end-to-end on
-**2026-05-07** against production (`https://api.acedata.cloud` →
+**2026-05-07** against production (`https://x402.acedata.cloud` →
 `https://facilitator.acedata.cloud` → SKALE Europa mainnet, chain id `1187947933`).
 Real numbers and a real settlement hash from that run are pasted below — you
 should expect to see the same shape when you reproduce it.
@@ -44,7 +44,7 @@ Show the README diagram or just say it out loud:
              │ 1. POST /openai/chat/completions   (no auth)
              ▼
 ┌─────────────────────────┐
-│  api.acedata.cloud      │
+│  x402.acedata.cloud     │
 │  (PlatformGateway)      │
 └────────────┬────────────┘
              │ 2. 402 Payment Required
@@ -58,7 +58,7 @@ Show the README diagram or just say it out loud:
              │    X-Payment: <base64 envelope>
              ▼
 ┌─────────────────────────┐      ┌──────────────────────────┐
-│  api.acedata.cloud      │ ───▶ │ facilitator.acedata.cloud│
+│  x402.acedata.cloud     │ ───▶ │ facilitator.acedata.cloud│
 └────────────┬────────────┘      │  verifies + settles tx    │
              │ 4. 200 OK         │  on SKALE (gas free)      │
              ▼                   └────────────┬─────────────┘
@@ -123,7 +123,7 @@ Goal: prove that the API is genuinely public-without-credentials, and that the
 server tells you exactly how much each chain costs.
 
 ```bash
-curl -s -i -X POST https://api.acedata.cloud/openai/chat/completions \
+curl -s -i -X POST https://x402.acedata.cloud/openai/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hi in 10 words."}]}' \
   | sed -n '1,40p'
@@ -229,7 +229,7 @@ for legibility; the script prints them verbatim):
 
 ```text
 === SKALE X402 Real E2E Test ===
-API: https://api.acedata.cloud
+API: https://x402.acedata.cloud
 SKALE RPC: https://skale-base.skalenodes.com/v1/base
 Payer wallet: 0xd0479FA9FD8C678303d477433d24C15e3723CC1C
 Explorer (wallet): https://skale-base-explorer.skalenodes.com/address/0xd0479FA9FD8C678303d477433d24C15e3723CC1C
@@ -237,7 +237,7 @@ Explorer (wallet): https://skale-base-explorer.skalenodes.com/address/0xd0479FA9
 --- Step 1: Request /openai/chat/completions without auth ---
 HTTP request:
   > (unauthenticated probe)
-  > POST https://api.acedata.cloud/openai/chat/completions
+  > POST https://x402.acedata.cloud/openai/chat/completions
   > Content-Type: application/json
   > Content-Length: 84
   >
@@ -299,7 +299,7 @@ Signed envelope (decoded):
 --- Step 3: Retry /openai/chat/completions with X-Payment ---
 HTTP request:
   > (paid retry)
-  > POST https://api.acedata.cloud/openai/chat/completions
+  > POST https://x402.acedata.cloud/openai/chat/completions
   > Content-Type: application/json
   > X-Payment: eyJ4NDAyVmVyc2lvbiI6Miwic2NoZW1l…YWQxNDZjZDFiIn19  (636 bytes base64, decoded above)
   > Content-Length: 84

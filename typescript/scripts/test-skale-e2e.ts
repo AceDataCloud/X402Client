@@ -155,7 +155,7 @@ async function main() {
   loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
   loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
-  const apiBase = process.env.API_BASE || 'https://api.acedata.cloud';
+  const apiBase = process.env.API_BASE || 'https://x402.acedata.cloud';
   const testApiPath = process.env.TEST_API_PATH || '/suno/audios';
   const testBody = process.env.TEST_BODY
     ? JSON.parse(process.env.TEST_BODY)

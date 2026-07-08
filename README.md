@@ -33,7 +33,7 @@ Two settlement modes:
 SDK call (no Bearer token)
       │
       ▼
- api.acedata.cloud  ── 402 Payment Required + accepts[] ──▶  SDK
+ x402.acedata.cloud ── 402 Payment Required + accepts[] ──▶  SDK
                                                              │
                                              payment handler │ (this package)
                                                              ▼

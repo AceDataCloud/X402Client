@@ -58,7 +58,7 @@ interface ScenarioResult {
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '../..');
-const apiBase = process.env.API_BASE || 'https://api.acedata.cloud';
+const apiBase = process.env.API_BASE || 'https://x402.acedata.cloud';
 const apiPath = '/openai/chat/completions';
 const solanaRpc = 'https://solana-mainnet.g.alchemy.com/v2/KdwJ2bpGF18YLpi4Te8L1';
 

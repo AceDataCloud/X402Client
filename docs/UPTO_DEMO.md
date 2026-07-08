@@ -6,7 +6,7 @@
 
 This walks through the same flow we run on stage. Every command was executed
 end-to-end on **2026-05-31** against production
-(`https://api.acedata.cloud` → `https://facilitator.acedata.cloud` → Base
+(`https://x402.acedata.cloud` → `https://facilitator.acedata.cloud` → Base
 mainnet via `X402UptoPermit2Proxy` at
 [`0x4020A4f3…CC240002`](https://basescan.org/address/0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002)).
 
@@ -54,7 +54,7 @@ and the on-chain transfer is the truth.
              │ 1. POST /v1/chat/completions   (no auth)
              ▼
 ┌─────────────────────────┐
-│  api.acedata.cloud      │
+│  x402.acedata.cloud     │
 │  (PlatformGateway)      │
 └────────────┬────────────┘
              │ 2. 402 Payment Required
@@ -70,7 +70,7 @@ and the on-chain transfer is the truth.
              │    X-Payment: <base64 envelope>
              ▼
 ┌─────────────────────────┐     5. async /record(traceId, actualCost)
-│  api.acedata.cloud      │ ─────────────────────────────────────┐
+│  x402.acedata.cloud     │ ───────────────────────────────────────┐
 └────────────┬────────────┘                                       │
              │ 4. 200 OK + x-usage-exempt: true                   ▼
              ▼                                          ┌──────────────────────────┐
@@ -196,7 +196,7 @@ Things worth pointing out on stage:
 ## Step 1 — Hit the API unauthenticated and read the 402
 
 ```bash
-curl -s -i -X POST https://api.acedata.cloud/v1/chat/completions \
+curl -s -i -X POST https://x402.acedata.cloud/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"你是哪个模型?"}],"max_tokens":40}' \
   | sed -n '1,60p'
@@ -289,7 +289,7 @@ here so you can read every line in
 ```text
 === Live X402 upto E2E (Base mainnet) ===
 Payer wallet: 0x5d4f08D5c2bb60703284bc06671Eb680fA41B105
-Endpoint:     POST https://api.acedata.cloud/v1/chat/completions
+Endpoint:     POST https://x402.acedata.cloud/v1/chat/completions
 
 --- Step 1: POST without auth → expect 402 ---
 ✅ Got 402 with 5 accept entries

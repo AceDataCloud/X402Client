@@ -32,7 +32,7 @@ def _upto_requirement(*, ceiling: str = "4760750", network: str = "base") -> dic
         "network": network,
         "maxAmountRequired": ceiling,
         "maxTimeoutSeconds": 3600,
-        "resource": "https://api.acedata.cloud/openai/chat/completions",
+        "resource": "https://x402.acedata.cloud/openai/chat/completions",
         "description": "AceDataCloud API call (metered)",
         "payTo": PAY_TO_ADDR,
         "asset": USDC_BASE,
