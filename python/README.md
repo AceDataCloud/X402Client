@@ -24,6 +24,7 @@ from acedatacloud import AceDataCloud
 from acedatacloud_x402 import create_x402_payment_handler, EVMAccountSigner
 
 client = AceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
         network="base",                         # or "skale"
         evm_signer=EVMAccountSigner.from_private_key("0x..."),
@@ -45,6 +46,7 @@ from acedatacloud import AceDataCloud
 from acedatacloud_x402 import create_x402_payment_handler, SolanaKeypairSigner
 
 client = AceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
         network="solana",
         solana_signer=SolanaKeypairSigner.from_base58("..."),
@@ -64,6 +66,7 @@ The same handler works with `AsyncAceDataCloud`:
 from acedatacloud import AsyncAceDataCloud
 
 client = AsyncAceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(network="base", evm_signer=signer),
 )
 ```
@@ -94,6 +97,7 @@ from acedatacloud_x402 import (
 )
 
 client = AceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
         network="base",
         evm_signer=EVMAccountSigner.from_private_key("0x..."),
