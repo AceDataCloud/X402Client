@@ -62,6 +62,7 @@ import { createX402PaymentHandler } from '@acedatacloud/x402-client';
 
 const client = new AceDataCloud({
   // No apiToken — per-request on-chain payment.
+  baseURL: 'https://x402.acedata.cloud',
   paymentHandler: createX402PaymentHandler({
     network: 'base',                // or 'skale'
     evmProvider: window.ethereum,   // any EIP-1193 provider works
@@ -112,6 +113,7 @@ import { AceDataCloud } from '@acedatacloud/sdk';
 import { createX402PaymentHandler } from '@acedatacloud/x402-client';
 
 const client = new AceDataCloud({
+  baseURL: 'https://x402.acedata.cloud',
   paymentHandler: createX402PaymentHandler({
     network: 'solana',
     solanaWallet: phantomWallet,     // any wallet adapter with signTransaction()

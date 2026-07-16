@@ -54,6 +54,7 @@ import { AceDataCloud } from '@acedatacloud/sdk';
 import { createX402PaymentHandler } from '@acedatacloud/x402-client';
 
 const client = new AceDataCloud({
+  baseURL: 'https://x402.acedata.cloud',
   paymentHandler: createX402PaymentHandler({
     network: 'base',
     evmProvider: window.ethereum,
@@ -81,6 +82,7 @@ Then prefer the `upto` scheme on the handler:
 import { approvePermit2, createX402PaymentHandler } from '@acedatacloud/x402-client';
 
 const client = new AceDataCloud({
+  baseURL: 'https://x402.acedata.cloud',
   paymentHandler: createX402PaymentHandler({
     network: 'base',
     evmProvider: window.ethereum,
@@ -99,6 +101,7 @@ from acedatacloud import AceDataCloud
 from acedatacloud_x402 import create_x402_payment_handler, EVMAccountSigner
 
 client = AceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
         network="base",
         evm_signer=EVMAccountSigner.from_private_key("0x..."),
@@ -120,6 +123,7 @@ acedatacloud-x402 approve-permit2 --network base \
 
 ```python
 client = AceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
         network="base",
         evm_signer=EVMAccountSigner.from_private_key("0x..."),

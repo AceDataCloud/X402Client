@@ -15,6 +15,7 @@ def build_client(network: str = "base") -> AceDataCloud:
     if not key:
         raise RuntimeError("set X402_PRIVATE_KEY to a wallet holding USDC on the chosen network")
     return AceDataCloud(
+        base_url="https://x402.acedata.cloud",
         payment_handler=create_x402_payment_handler(
             network=network,
             evm_signer=EVMAccountSigner.from_private_key(key),

@@ -43,6 +43,7 @@ from acedatacloud import AceDataCloud
 from acedatacloud_x402 import create_x402_payment_handler, EVMAccountSigner
 
 client = AceDataCloud(
+    base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
         network="base",
         evm_signer=EVMAccountSigner.from_private_key(os.environ["X402_PRIVATE_KEY"]),
