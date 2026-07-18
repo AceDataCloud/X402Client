@@ -29,6 +29,7 @@ export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 
 /** Canonical CREATE2 deployment of the AceData upto-proxy spender. */
 export const X402_UPTO_PERMIT2_PROXY_ADDRESS = '0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002';
+const VALID_AFTER_SKEW_SECONDS = 30;
 
 function randomNonce32(): string {
   const bytes = new Uint8Array(32);
@@ -81,7 +82,7 @@ export async function signEVMPayment(
     from: address,
     to: requirements.payTo,
     value,
-    validAfter: String(now),
+    validAfter: '0',
     validBefore: String(now + maxTimeout),
     nonce: randomNonce32(),
   };
@@ -193,9 +194,9 @@ export async function signEVMUptoPayment(
   opts: { validAfter?: number; deadlineBuffer?: number; nonce?: bigint | string } = {}
 ): Promise<X402PaymentEnvelope> {
   const now = Math.floor(Date.now() / 1000);
-  const validAfter = opts.validAfter ?? now;
+  const validAfter = opts.validAfter ?? now - VALID_AFTER_SKEW_SECONDS;
   const timeout = opts.deadlineBuffer ?? requirements.maxTimeoutSeconds ?? 3600;
-  const deadline = validAfter + timeout;
+  const deadline = (opts.validAfter ?? now) + timeout;
   const nonce = opts.nonce ?? randomPermit2Nonce();
   const permittedAmount = BigInt(requirements.maxAmountRequired).toString();
 

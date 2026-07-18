@@ -111,6 +111,25 @@ describe('upto envelope', () => {
     expect(BigInt(auth.deadline) > BigInt(auth.witness.validAfter)).toBe(true);
   });
 
+  it('backdates default validAfter while preserving the deadline window', async () => {
+    const { provider, address } = makeWalletProvider(TEST_PRIVATE_KEY);
+    const before = Math.floor(Date.now() / 1000);
+    const envelope = await signEVMUptoPayment(
+      uptoRequirement({ network: 'skale' }),
+      provider,
+      address
+    );
+    const after = Math.floor(Date.now() / 1000);
+    const auth = (envelope.payload as {
+      permit2Authorization: { deadline: string; witness: { validAfter: string } };
+    }).permit2Authorization;
+
+    expect(Number(auth.witness.validAfter)).toBeGreaterThanOrEqual(before - 30);
+    expect(Number(auth.witness.validAfter)).toBeLessThanOrEqual(after - 30);
+    expect(Number(auth.deadline)).toBeGreaterThanOrEqual(before + 3600);
+    expect(Number(auth.deadline)).toBeLessThanOrEqual(after + 3600);
+  });
+
   it('signature recovers to the payer when the facilitator reconstructs the typed data', async () => {
     const { provider, address } = makeWalletProvider(TEST_PRIVATE_KEY);
     const req = uptoRequirement();

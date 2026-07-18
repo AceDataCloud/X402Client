@@ -108,6 +108,8 @@ The helper is **idempotent** — re-running it after the allowance is already at
 
 ### Solana
 
+Solana payments use a recent blockhash and must reach facilitator broadcast within 60 seconds. Use this network only for APIs expected to complete inside that window; long-running protected calls require a future durable-nonce settlement flow.
+
 ```ts
 import { AceDataCloud } from '@acedatacloud/sdk';
 import { createX402PaymentHandler } from '@acedatacloud/x402-client';

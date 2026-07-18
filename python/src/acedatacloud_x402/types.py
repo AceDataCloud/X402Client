@@ -15,6 +15,8 @@ class PaymentRequirementExtra(TypedDict, total=False):
     computeUnitLimit: int
     computeUnitPriceMicroLamports: int
     rpcUrl: str
+    feePayer: str
+    memo: str
     # upto-scheme additions (Permit2-based metered billing on EVM):
     permit2Address: str
     proxyAddress: str
@@ -71,7 +73,7 @@ class EVMUptoPayload(TypedDict):
 
 
 class SolanaPayload(TypedDict):
-    signature: str
+    transaction: str
 
 
 class X402PaymentEnvelope(TypedDict):

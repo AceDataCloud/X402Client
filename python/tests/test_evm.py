@@ -48,6 +48,7 @@ def test_envelope_shape():
     assert auth["from"].lower() == signer.address.lower()
     assert auth["to"] == "0x4d2f00Dac0aCb02C7211cBDe2DbE9d86D7B7b2F2"
     assert auth["value"] == "95215"
+    assert auth["validAfter"] == "0"
     # nonce is 32 random bytes, hex-encoded
     assert auth["nonce"].startswith("0x")
     assert len(auth["nonce"]) == 66  # "0x" + 64 hex chars

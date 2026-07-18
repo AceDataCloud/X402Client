@@ -157,20 +157,21 @@ function getRequirement(
 function parseMetadata(value: UsageEntry['data'] extends { metadata?: infer T } ? T : never): Record<string, unknown> {
   if (!value) return {};
   if (typeof value === 'string') {
-    // CLS stores metadata as a Python dict repr: {'x402': True, 'x402_tx': '0x...'}
-    // Convert to JSON by replacing single quotes with double quotes and Python bools/None.
     try {
       return JSON.parse(value);
     } catch {
-      // fall through to python-repr coercion
+      // CLS may store Python repr rather than JSON.
     }
-    const coerced = value
-      .replace(/'/g, '"')
-      .replace(/\bTrue\b/g, 'true')
-      .replace(/\bFalse\b/g, 'false')
-      .replace(/\bNone\b/g, 'null');
     try {
-      return JSON.parse(coerced);
+      const parsed = execFileSync(
+        'python3',
+        [
+          '-c',
+          'import ast,json,sys; value=ast.literal_eval(sys.stdin.read()); print(json.dumps(value))',
+        ],
+        { input: value, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] },
+      );
+      return JSON.parse(parsed);
     } catch {
       return {};
     }

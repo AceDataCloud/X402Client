@@ -1,14 +1,15 @@
 /**
  * Solana X402 payment signing.
  *
- * Builds a SPL TransferChecked instruction, signs via wallet adapter,
- * and produces the X-Payment header.
+ * Builds a facilitator-sponsored SPL TransferChecked transaction and asks the
+ * wallet to add only the payer signature. The facilitator broadcasts it later.
  */
 
 import type { PaymentRequirement, SolanaPayload, SolanaWalletAdapter, X402PaymentEnvelope } from './types.js';
 
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+const MEMO_PROGRAM_ID = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 
 async function loadWeb3() {
   return import('@solana/web3.js');
@@ -42,39 +43,79 @@ function buildTransferCheckedData(amount: bigint, decimals: number): Uint8Array 
   return data;
 }
 
+function randomMemoNonce(): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
 export async function signSolanaPayment(
   requirements: PaymentRequirement,
-  wallet: SolanaWalletAdapter
+  wallet: SolanaWalletAdapter,
+  rpcUrl?: string
+): Promise<X402PaymentEnvelope> {
+  const { Connection } = await loadWeb3();
+  const endpoint = rpcUrl ?? requirements.extra?.rpcUrl ?? 'https://api.mainnet-beta.solana.com';
+  const connection = new Connection(endpoint, 'confirmed');
+  const { PublicKey } = await loadWeb3();
+  const payerAddress = getPublicKeyString(wallet);
+  const [sourceATA, destinationATA] = await Promise.all([
+    findATA(payerAddress, requirements.asset),
+    findATA(requirements.payTo, requirements.asset),
+  ]);
+  const accounts = await connection.getMultipleAccountsInfo([
+    new PublicKey(sourceATA),
+    new PublicKey(destinationATA),
+  ]);
+  if (!accounts[0]) throw new Error(`Solana payer token account does not exist: ${sourceATA}`);
+  if (!accounts[1]) throw new Error(`Solana payment recipient token account does not exist: ${destinationATA}`);
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  return buildSolanaPayment(requirements, wallet, blockhash);
+}
+
+export async function buildSolanaPayment(
+  requirements: PaymentRequirement,
+  wallet: SolanaWalletAdapter,
+  blockhash: string
 ): Promise<X402PaymentEnvelope> {
   const {
     PublicKey,
-    Transaction,
+    TransactionMessage,
     TransactionInstruction,
+    VersionedTransaction,
     ComputeBudgetProgram,
-    Connection,
   } = await loadWeb3();
 
   const payTo = requirements.payTo;
   const mint = requirements.asset;
   const amount = BigInt(requirements.maxAmountRequired);
   const decimals = requirements.extra?.decimals ?? 6;
-  const computeUnitLimit = requirements.extra?.computeUnitLimit ?? 0;
-  const computeUnitPrice = requirements.extra?.computeUnitPriceMicroLamports ?? 0;
+  const computeUnitLimit = requirements.extra?.computeUnitLimit ?? 100_000;
+  const computeUnitPrice = requirements.extra?.computeUnitPriceMicroLamports ?? 5_000;
+  const memo = requirements.extra?.memo ?? randomMemoNonce();
+  if (Buffer.byteLength(memo, 'utf8') > 256) {
+    throw new Error('PaymentRequirement.extra.memo must be at most 256 bytes');
+  }
+  const feePayer = requirements.extra?.feePayer;
+  if (!feePayer) {
+    throw new Error('PaymentRequirement.extra.feePayer is required for Solana');
+  }
+  if (!wallet.signTransaction) {
+    if (wallet.signAndSendTransaction) {
+      throw new Error(
+        'Solana signAndSendTransaction is no longer supported because it broadcasts before service delivery; provide signTransaction instead'
+      );
+    }
+    throw new Error('Solana wallet must provide signTransaction');
+  }
 
   const payerAddress = getPublicKeyString(wallet);
   const sourceATA = await findATA(payerAddress, mint);
   const destATA = await findATA(payTo, mint);
 
-  const tx = new Transaction();
-
-  if (computeUnitLimit > 0) {
-    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnitLimit }));
-  }
-  if (computeUnitPrice > 0) {
-    tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: computeUnitPrice }));
-  }
-
-  tx.add(
+  const instructions = [
+    ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnitLimit }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: computeUnitPrice }),
     new TransactionInstruction({
       programId: new PublicKey(TOKEN_PROGRAM_ID),
       keys: [
@@ -84,22 +125,25 @@ export async function signSolanaPayment(
         { pubkey: new PublicKey(payerAddress), isSigner: true, isWritable: false },
       ],
       data: Buffer.from(buildTransferCheckedData(amount, decimals)),
-    })
-  );
-
-  tx.feePayer = new PublicKey(payerAddress);
-
-  // Fetch blockhash
-  const rpcUrl = requirements.extra?.rpcUrl ?? 'https://api.mainnet-beta.solana.com';
-  const connection = new Connection(rpcUrl, 'confirmed');
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
-  tx.recentBlockhash = blockhash;
-
-  // Sign and send
-  const result = await wallet.signAndSendTransaction(tx);
-  const signature = typeof result === 'string' ? result : result.signature;
-
-  const payload: SolanaPayload = { signature };
+    }),
+    new TransactionInstruction({
+      programId: new PublicKey(MEMO_PROGRAM_ID),
+      keys: [],
+      data: Buffer.from(memo, 'utf8'),
+    }),
+  ];
+  const message = new TransactionMessage({
+    payerKey: new PublicKey(feePayer),
+    recentBlockhash: blockhash,
+    instructions,
+  }).compileToV0Message();
+  const transaction = new VersionedTransaction(message);
+  const signed = (await wallet.signTransaction(transaction)) as {
+    serialize(): Uint8Array;
+  };
+  const payload: SolanaPayload = {
+    transaction: Buffer.from(signed.serialize()).toString('base64'),
+  };
 
   return {
     x402Version: 2,

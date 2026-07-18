@@ -41,6 +41,8 @@ print(res.choices[0].message.content)
 
 ### Solana
 
+Solana payments use a recent blockhash and must reach facilitator broadcast within 60 seconds. Use this network only for APIs expected to complete inside that window; long-running protected calls require a future durable-nonce settlement flow.
+
 ```python
 from acedatacloud import AceDataCloud
 from acedatacloud_x402 import create_x402_payment_handler, SolanaKeypairSigner
