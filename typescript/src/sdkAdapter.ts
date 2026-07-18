@@ -34,6 +34,8 @@ export interface X402PaymentHandlerOptions {
   network: 'solana' | 'base' | 'skale';
   /** Solana wallet adapter (required if network=solana). */
   solanaWallet?: SolanaWalletAdapter;
+  /** Optional Solana RPC used only to fetch a recent blockhash. */
+  solanaRpcUrl?: string;
   /** EVM EIP-1193 provider (required if network=base/skale). */
   evmProvider?: EVMProvider;
   /** EVM account address (required if network=base/skale). */
@@ -89,7 +91,7 @@ function selectRequirement(
 export function createX402PaymentHandler(
   options: X402PaymentHandlerOptions
 ): (ctx: SdkPaymentHandlerContext) => Promise<SdkPaymentHandlerResult> {
-  const { network, solanaWallet, evmProvider, evmAddress, preferScheme } = options;
+  const { network, solanaWallet, solanaRpcUrl, evmProvider, evmAddress, preferScheme } = options;
 
   if (network === 'solana' && !solanaWallet) {
     throw new Error('solanaWallet is required when network="solana"');
@@ -109,7 +111,7 @@ export function createX402PaymentHandler(
 
     let envelope: X402PaymentEnvelope;
     if (network === 'solana') {
-      envelope = await signSolanaPayment(requirement, solanaWallet!);
+      envelope = await signSolanaPayment(requirement, solanaWallet!, solanaRpcUrl);
     } else if (requirement.scheme === 'upto') {
       envelope = await signEVMUptoPayment(requirement, evmProvider!, evmAddress!);
     } else {

@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Wallet } from 'ethers';
-import { Connection, Keypair, Transaction } from '@solana/web3.js';
+import { Keypair, VersionedTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { signSolanaPayment } from '../src/solana.ts';
 
@@ -23,6 +23,11 @@ interface PaymentRequirement {
     chainId?: number | string;
     verifyingContract?: string;
     decimals?: number;
+    computeUnitLimit?: number;
+    computeUnitPriceMicroLamports?: number;
+    rpcUrl?: string;
+    feePayer?: string;
+    memo?: string;
   };
 }
 
@@ -297,19 +302,6 @@ async function waitForUsage(userId: string, startedAfterMs: number): Promise<{
   };
 }
 
-async function waitForSolanaConfirmation(connection: Connection, signature: string): Promise<void> {
-  for (let attempt = 1; attempt <= 20; attempt += 1) {
-    const { value } = await connection.getSignatureStatuses([signature]);
-    const status = value[0];
-    if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
-      return;
-    }
-    await sleep(1000);
-  }
-
-  throw new Error(`Solana signature not confirmed in time: ${signature}`);
-}
-
 async function getRequirement(network: 'base' | 'solana' | 'skale', body: unknown): Promise<PaymentRequirement> {
   const accepts = Array.isArray((body as { accepts?: PaymentRequirement[] } | null)?.accepts)
     ? ((body as { accepts: PaymentRequirement[] }).accepts)
@@ -539,24 +531,17 @@ async function runSolanaScenario(): Promise<ScenarioResult> {
   console.log(`  payTo: ${requirement.payTo}`);
   console.log(`  asset: ${requirement.asset}`);
 
-  console.log('Step 2: Sign and send Solana payment with SDK wallet path');
-  const connection = new Connection(requirement.extra?.rpcUrl ?? solanaRpc, 'confirmed');
+  console.log('Step 2: Build and partially sign Solana payment');
   const solanaWallet = {
     publicKey: payer.publicKey,
-    async signAndSendTransaction(tx: unknown): Promise<string> {
-      const transaction = tx as Transaction;
-      transaction.partialSign(payer);
-      const signature = await connection.sendRawTransaction(transaction.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-      });
-      await waitForSolanaConfirmation(connection, signature);
-      return signature;
+    async signTransaction(tx: unknown): Promise<VersionedTransaction> {
+      const transaction = tx as VersionedTransaction;
+      transaction.sign([payer]);
+      return transaction;
     },
   };
-  const envelope = await signSolanaPayment(requirement, solanaWallet);
-  const signature = 'signature' in envelope.payload ? envelope.payload.signature : null;
-  console.log(`  signature: ${signature ?? '(missing)'}`);
+  const envelope = await signSolanaPayment(requirement, solanaWallet, solanaRpc);
+  console.log(`  serialized transaction: ${'transaction' in envelope.payload ? 'ready' : '(missing)'}`);
 
   console.log('Step 3: Retry with X-Payment');
   const xPayment = toBase64(envelope);

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 
 import pytest
 from eth_account import Account
@@ -72,6 +73,17 @@ def test_upto_envelope_shape():
     assert auth["deadline"].isdigit()
     assert auth["witness"]["validAfter"].isdigit()
     assert int(auth["deadline"]) > int(auth["witness"]["validAfter"])
+
+
+def test_upto_default_valid_after_tolerates_chain_clock_lag():
+    signer = EVMAccountSigner.from_private_key(TEST_PRIVATE_KEY)
+    before = int(time.time())
+    envelope = sign_evm_upto_payment(_upto_requirement(network="skale"), signer)
+    after = int(time.time())
+    auth = envelope["payload"]["permit2Authorization"]
+
+    assert before - 30 <= int(auth["witness"]["validAfter"]) <= after - 30
+    assert before + 3600 <= int(auth["deadline"]) <= after + 3600
 
 
 def test_upto_signature_recovers_to_payer():

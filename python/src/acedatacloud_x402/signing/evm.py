@@ -28,6 +28,7 @@ from ..types import EVMPayload, EVMUptoPayload, PaymentRequirement, X402PaymentE
 # Kept in sync with FacilitatorX402.x402f.chain_handlers.upto_constants.
 PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
 X402_UPTO_PERMIT2_PROXY_ADDRESS = "0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002"
+_VALID_AFTER_SKEW_SECONDS = 30
 
 
 def _random_nonce_32() -> str:
@@ -112,7 +113,7 @@ def sign_evm_payment(
         "from": signer.address,
         "to": requirements["payTo"],
         "value": value,
-        "validAfter": str(now),
+        "validAfter": "0",
         "validBefore": str(now + max_timeout),
         "nonce": _random_nonce_32(),
     }
@@ -235,13 +236,13 @@ def sign_evm_upto_payment(
     extra = requirements.get("extra") or {}
     permitted_amount = int(requirements["maxAmountRequired"])
     now = int(time.time())
-    va = int(valid_after if valid_after is not None else now)
+    va = int(valid_after if valid_after is not None else now - _VALID_AFTER_SKEW_SECONDS)
     timeout = int(
         deadline_buffer
         if deadline_buffer is not None
         else requirements.get("maxTimeoutSeconds") or 3600
     )
-    deadline = va + timeout
+    deadline = (va if valid_after is not None else now) + timeout
     permit_nonce = int(nonce if nonce is not None else _random_permit2_nonce())
 
     typed_data = _build_upto_typed_data(

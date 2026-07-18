@@ -10,19 +10,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  Connection,
-  PublicKey,
-  TransactionMessage,
-  VersionedTransaction,
-  ComputeBudgetProgram,
-} from '@solana/web3.js';
-import {
-  createTransferCheckedInstruction,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountIdempotentInstruction,
-} from '@solana/spl-token';
+import { VersionedTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
+import { signSolanaPayment } from '../src/solana.ts';
 
 function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;
@@ -48,9 +38,6 @@ loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
 const SOLANA_RPC = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const PAYER_PRIVATE_KEY = process.env.X402B_SOLANA_PAYER_PRIVATE_KEY?.trim();
-const FACILITATOR_ADDRESS =
-  process.env.X402B_SOLANA_FACILITATOR_ADDRESS?.trim() || '3SPm6qbgsDkj24MuR8Ss4sH97fziqyCiqFKDyeVU2igq';
-
 if (!PAYER_PRIVATE_KEY) {
   console.error('ERROR: X402B_SOLANA_PAYER_PRIVATE_KEY is missing. Add it to .claude/.env or PlatformBackend/.env.');
   process.exit(1);
@@ -74,6 +61,14 @@ interface PaymentRequirement {
   resource: string;
   payTo: string;
   asset: string;
+  extra?: {
+    decimals?: number;
+    computeUnitLimit?: number;
+    computeUnitPriceMicroLamports?: number;
+    rpcUrl?: string;
+    feePayer?: string;
+    memo?: string;
+  };
 }
 
 async function main() {
@@ -85,7 +80,6 @@ async function main() {
 
   console.log('=== Real E2E X402 Test (Solana) ===');
   console.log(`Payer wallet: ${payer.publicKey.toBase58()}`);
-  console.log(`Facilitator: ${FACILITATOR_ADDRESS}\n`);
 
   // Step 1: Request without auth → 402
   console.log('--- Step 1: POST without auth → expect 402 ---');
@@ -113,73 +107,24 @@ async function main() {
   console.log(`   PayTo: ${solReq.payTo}`);
   console.log(`   Asset (USDC mint): ${solReq.asset}\n`);
 
-  // Step 2: Build Solana transaction
-  console.log('--- Step 2: Build Solana transaction ---');
-  const connection = new Connection(SOLANA_RPC, 'confirmed');
-  const facilitatorPubkey = new PublicKey(FACILITATOR_ADDRESS);
-  const payToPubkey = new PublicKey(solReq.payTo);
-  const usdcMint = new PublicKey(solReq.asset);
-
-  // Get ATAs
-  const payerAta = await getAssociatedTokenAddress(usdcMint, payer.publicKey);
-  const payToAta = await getAssociatedTokenAddress(usdcMint, payToPubkey);
-
-  // Get recent blockhash
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  console.log(`   Blockhash: ${blockhash.slice(0, 16)}...`);
-
-  // Build instructions per x402 spec:
-  // 1. ComputeBudget SetComputeUnitLimit
-  // 2. ComputeBudget SetComputeUnitPrice
-  // 3. (optional) Create ATA for payTo if needed
-  // 4. SPL Token TransferChecked
-  const instructions = [
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 100_000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5000 }), // 5 lamports/CU (max per spec)
-    createAssociatedTokenAccountIdempotentInstruction(
-      payer.publicKey, // payer creates ATA (facilitator must NOT appear in instruction accounts)
-      payToAta,
-      payToPubkey,
-      usdcMint,
-    ),
-    createTransferCheckedInstruction(
-      payerAta,       // source
-      usdcMint,       // mint
-      payToAta,       // destination
-      payer.publicKey, // authority (payer signs)
-      amount,         // amount in atomic units
-      6,              // USDC decimals
-    ),
-  ];
-
-  // Build message with facilitator as fee payer
-  const messageV0 = new TransactionMessage({
-    payerKey: facilitatorPubkey, // facilitator pays gas
-    recentBlockhash: blockhash,
-    instructions,
-  }).compileToV0Message();
-
-  const transaction = new VersionedTransaction(messageV0);
-
-  // Payer partial-signs (authority for the transfer)
-  transaction.sign([payer]);
-  console.log(`✅ Transaction built and partially signed`);
-
-  // Serialize to base64
-  const serializedTx = Buffer.from(transaction.serialize()).toString('base64');
+  console.log('--- Step 2: Build and partially sign Solana transaction ---');
+  const envelope = await signSolanaPayment(
+    solReq,
+    {
+      publicKey: payer.publicKey,
+      async signTransaction(value: unknown): Promise<VersionedTransaction> {
+        const transaction = value as VersionedTransaction;
+        transaction.sign([payer]);
+        return transaction;
+      },
+    },
+    SOLANA_RPC,
+  );
+  const serializedTx = 'transaction' in envelope.payload ? envelope.payload.transaction : '';
   console.log(`   Serialized tx length: ${serializedTx.length} chars\n`);
 
   // Step 3: Build X-Payment header
   console.log('--- Step 3: Build X-Payment envelope ---');
-  const envelope = {
-    x402Version: 2,
-    scheme: 'exact',
-    network: 'solana',
-    payload: {
-      serializedTransaction: serializedTx,
-    },
-  };
-
   const xPayment = btoa(JSON.stringify(envelope));
   console.log(`   X-Payment header length: ${xPayment.length} chars\n`);
 

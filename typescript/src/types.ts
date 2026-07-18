@@ -21,6 +21,8 @@ export interface PaymentRequirement {
     computeUnitLimit?: number;
     computeUnitPriceMicroLamports?: number;
     rpcUrl?: string;
+    feePayer?: string;
+    memo?: string;
     // Fields used by the `upto` (Permit2) scheme:
     facilitatorAddress?: string;
     proxyAddress?: string;
@@ -43,9 +45,9 @@ export interface X402PaymentEnvelope {
   payload: SolanaPayload | EVMPayload | EVMUptoPayload;
 }
 
-/** Solana payload in wallet-fee-payer mode: just the on-chain transaction signature. */
+/** Solana payload: facilitator-fee-payer, partially signed serialized transaction. */
 export interface SolanaPayload {
-  signature: string;
+  transaction: string;
 }
 
 /** EVM payload (`exact` scheme): EIP-3009 TransferWithAuthorization + ECDSA signature. */
@@ -81,8 +83,10 @@ export interface Permit2WitnessAuthorization {
 /** Wallet adapter interface for Solana. */
 export interface SolanaWalletAdapter {
   publicKey: { toBase58(): string; toString(): string };
-  /** Wallet sends the transaction and returns the submitted signature. */
-  signAndSendTransaction(tx: unknown): Promise<string | { signature: string }>;
+  /** Wallet adds the payer signature without broadcasting the transaction. */
+  signTransaction?: (tx: unknown) => Promise<unknown>;
+  /** @deprecated Broadcasting before the protected request is unsafe; migrate to signTransaction. */
+  signAndSendTransaction?: (tx: unknown) => Promise<string>;
 }
 
 /** Wallet adapter interface for EVM (EIP-1193 provider). */
