@@ -33,4 +33,10 @@ def test_network_mismatch_raises():
         ),
     )
     with pytest.raises(RuntimeError, match="no payment requirement"):
-        handler({"url": "x", "method": "POST", "accepts": [{"network": "solana"}]})
+        handler(
+            {
+                "url": "x",
+                "method": "POST",
+                "accepts": [{"network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"}],
+            }
+        )

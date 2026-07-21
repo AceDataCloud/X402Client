@@ -107,7 +107,7 @@ def sign_evm_payment(
     """Sign an EIP-712 ``TransferWithAuthorization`` envelope for an EVM chain."""
     now = int(time.time())
     max_timeout = int(requirements.get("maxTimeoutSeconds") or 120)
-    value = str(int(requirements["maxAmountRequired"]))
+    value = str(int(requirements.get("amount") or requirements.get("maxAmountRequired") or "0"))
 
     authorization: dict[str, str] = {
         "from": signer.address,
@@ -126,8 +126,7 @@ def sign_evm_payment(
     payload: EVMPayload = {"authorization": authorization, "signature": signature}
     return {
         "x402Version": 2,
-        "scheme": requirements.get("scheme") or "exact",
-        "network": requirements.get("network") or "base",
+        "accepted": requirements,
         "payload": dict(payload),
     }
 
@@ -234,7 +233,9 @@ def sign_evm_upto_payment(
         ``permit2Authorization`` shape parsed by the facilitator.
     """
     extra = requirements.get("extra") or {}
-    permitted_amount = int(requirements["maxAmountRequired"])
+    permitted_amount = int(
+        requirements.get("amount") or requirements.get("maxAmountRequired") or "0"
+    )
     now = int(time.time())
     va = int(valid_after if valid_after is not None else now - _VALID_AFTER_SKEW_SECONDS)
     timeout = int(
@@ -277,8 +278,7 @@ def sign_evm_upto_payment(
 
     return {
         "x402Version": 2,
-        "scheme": "upto",
-        "network": requirements.get("network") or "base",
+        "accepted": requirements,
         "payload": dict(payload),
     }
 

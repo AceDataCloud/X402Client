@@ -104,7 +104,7 @@ def sign_solana_payment(
     extra: dict[str, Any] = requirements.get("extra") or {}
     pay_to = Pubkey.from_string(requirements["payTo"])
     mint = Pubkey.from_string(requirements["asset"])
-    amount = int(requirements["maxAmountRequired"])
+    amount = int(requirements.get("amount") or requirements.get("maxAmountRequired") or "0")
     decimals = int(extra.get("decimals") or 6)
     compute_unit_limit = int(extra.get("computeUnitLimit") or 100_000)
     compute_unit_price = int(extra.get("computeUnitPriceMicroLamports") or 5_000)
@@ -153,7 +153,6 @@ def sign_solana_payment(
     payload: SolanaPayload = {"transaction": serialized}
     return {
         "x402Version": 2,
-        "scheme": requirements.get("scheme") or "exact",
-        "network": requirements.get("network") or "solana",
+        "accepted": requirements,
         "payload": dict(payload),
     }

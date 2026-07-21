@@ -88,7 +88,7 @@ export async function buildSolanaPayment(
 
   const payTo = requirements.payTo;
   const mint = requirements.asset;
-  const amount = BigInt(requirements.maxAmountRequired);
+  const amount = BigInt(requirements.amount ?? requirements.maxAmountRequired ?? '0');
   const decimals = requirements.extra?.decimals ?? 6;
   const computeUnitLimit = requirements.extra?.computeUnitLimit ?? 100_000;
   const computeUnitPrice = requirements.extra?.computeUnitPriceMicroLamports ?? 5_000;
@@ -147,8 +147,7 @@ export async function buildSolanaPayment(
 
   return {
     x402Version: 2,
-    scheme: requirements.scheme || 'exact',
-    network: requirements.network || 'solana',
+    accepted: requirements,
     payload,
   };
 }

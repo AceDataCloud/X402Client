@@ -76,7 +76,7 @@ export async function signEVMPayment(
 ): Promise<X402PaymentEnvelope> {
   const now = Math.floor(Date.now() / 1000);
   const maxTimeout = requirements.maxTimeoutSeconds || 120;
-  const value = BigInt(requirements.maxAmountRequired).toString();
+  const value = BigInt(requirements.amount ?? requirements.maxAmountRequired ?? '0').toString();
 
   const authorization: EVMAuthorization = {
     from: address,
@@ -98,8 +98,7 @@ export async function signEVMPayment(
 
   return {
     x402Version: 2,
-    scheme: requirements.scheme || 'exact',
-    network: requirements.network || 'base',
+    accepted: requirements,
     payload,
   };
 }
@@ -198,7 +197,7 @@ export async function signEVMUptoPayment(
   const timeout = opts.deadlineBuffer ?? requirements.maxTimeoutSeconds ?? 3600;
   const deadline = (opts.validAfter ?? now) + timeout;
   const nonce = opts.nonce ?? randomPermit2Nonce();
-  const permittedAmount = BigInt(requirements.maxAmountRequired).toString();
+  const permittedAmount = BigInt(requirements.amount ?? requirements.maxAmountRequired ?? '0').toString();
 
   const typedData = buildUptoTypedData(requirements, {
     from: address,
@@ -234,8 +233,7 @@ export async function signEVMUptoPayment(
 
   return {
     x402Version: 2,
-    scheme: 'upto',
-    network: requirements.network || 'base',
+    accepted: requirements,
     payload,
   };
 }

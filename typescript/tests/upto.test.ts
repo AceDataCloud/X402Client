@@ -30,8 +30,8 @@ function uptoRequirement(
 ): PaymentRequirement {
   return {
     scheme: 'upto',
-    network: 'base',
-    maxAmountRequired: '4760750',
+    network: 'eip155:8453',
+    amount: '4760750',
     maxTimeoutSeconds: 3600,
     resource: 'https://x402.acedata.cloud/openai/chat/completions',
     description: 'AceDataCloud API call (metered)',
@@ -80,8 +80,8 @@ describe('upto envelope', () => {
     const envelope = await signEVMUptoPayment(uptoRequirement(), provider, address);
 
     expect(envelope.x402Version).toBe(2);
-    expect(envelope.scheme).toBe('upto');
-    expect(envelope.network).toBe('base');
+    expect(envelope.accepted.scheme).toBe('upto');
+    expect(envelope.accepted.network).toBe('eip155:8453');
 
     const payload = envelope.payload as {
       permit2Authorization: Record<string, unknown>;
@@ -115,7 +115,7 @@ describe('upto envelope', () => {
     const { provider, address } = makeWalletProvider(TEST_PRIVATE_KEY);
     const before = Math.floor(Date.now() / 1000);
     const envelope = await signEVMUptoPayment(
-      uptoRequirement({ network: 'skale' }),
+      uptoRequirement({ network: 'eip155:1187947933' }),
       provider,
       address
     );
@@ -193,8 +193,8 @@ describe('upto envelope', () => {
 describe('createX402PaymentHandler with preferScheme', () => {
   const exactReq: PaymentRequirement = {
     scheme: 'exact',
-    network: 'base',
-    maxAmountRequired: '95215',
+    network: 'eip155:8453',
+    amount: '95215',
     maxTimeoutSeconds: 120,
     resource: 'https://x402.acedata.cloud/glm/chat/completions',
     description: 'fixed price',
@@ -223,9 +223,10 @@ describe('createX402PaymentHandler with preferScheme', () => {
       accepts: [exactReq, uptoRequirement()],
     });
     const decoded = JSON.parse(
-      Buffer.from(result.headers['X-Payment'], 'base64').toString('utf8')
-    ) as { scheme: string; payload: Record<string, unknown> };
-    expect(decoded.scheme).toBe('upto');
+      Buffer.from(result.headers['PAYMENT-SIGNATURE'], 'base64').toString('utf8')
+    ) as { accepted: PaymentRequirement; payload: Record<string, unknown> };
+    expect(decoded.accepted.scheme).toBe('upto');
+    expect(decoded.accepted.network).toBe('eip155:8453');
     expect('permit2Authorization' in decoded.payload).toBe(true);
   });
 
@@ -244,9 +245,10 @@ describe('createX402PaymentHandler with preferScheme', () => {
       accepts: [exactReq],
     });
     const decoded = JSON.parse(
-      Buffer.from(result.headers['X-Payment'], 'base64').toString('utf8')
-    ) as { scheme: string; payload: Record<string, unknown> };
-    expect(decoded.scheme).toBe('exact');
+      Buffer.from(result.headers['PAYMENT-SIGNATURE'], 'base64').toString('utf8')
+    ) as { accepted: PaymentRequirement; payload: Record<string, unknown> };
+    expect(decoded.accepted.scheme).toBe('exact');
+    expect(decoded.accepted.network).toBe('eip155:8453');
     expect('authorization' in decoded.payload).toBe(true);
   });
 });

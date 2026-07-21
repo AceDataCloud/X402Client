@@ -28,6 +28,7 @@ class PaymentRequirement(TypedDict, total=False):
 
     scheme: str
     network: str
+    amount: str
     maxAmountRequired: str
     maxTimeoutSeconds: int
     resource: str
@@ -78,12 +79,18 @@ class SolanaPayload(TypedDict):
 
 class X402PaymentEnvelope(TypedDict):
     x402Version: int
-    scheme: str
-    network: str
+    accepted: PaymentRequirement
     payload: dict[str, Any]
 
 
-Network = Literal["solana", "base", "skale"]
+Network = Literal[
+    "solana",
+    "base",
+    "skale",
+    "eip155:8453",
+    "eip155:1187947933",
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+]
 
 
 @dataclass
