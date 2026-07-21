@@ -13,8 +13,8 @@ TEST_PRIVATE_KEY = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f
 def _fake_requirement() -> dict:
     return {
         "scheme": "exact",
-        "network": "base",
-        "maxAmountRequired": "95215",
+        "network": "eip155:8453",
+        "amount": "95215",
         "maxTimeoutSeconds": 120,
         "resource": "https://x402.acedata.cloud/openai/chat/completions",
         "description": "chat",
@@ -39,8 +39,8 @@ def test_envelope_shape():
     signer = EVMAccountSigner.from_private_key(TEST_PRIVATE_KEY)
     envelope = sign_evm_payment(_fake_requirement(), signer)
     assert envelope["x402Version"] == 2
-    assert envelope["scheme"] == "exact"
-    assert envelope["network"] == "base"
+    assert envelope["accepted"]["scheme"] == "exact"
+    assert envelope["accepted"]["network"] == "eip155:8453"
     payload = envelope["payload"]
     assert set(payload.keys()) == {"authorization", "signature"}
     assert payload["signature"].startswith("0x")
@@ -54,7 +54,7 @@ def test_envelope_shape():
     assert len(auth["nonce"]) == 66  # "0x" + 64 hex chars
 
 
-def test_handler_produces_x_payment_header():
+def test_handler_produces_payment_signature_header():
     from acedatacloud_x402 import create_x402_payment_handler
 
     handler = create_x402_payment_handler(
@@ -69,5 +69,5 @@ def test_handler_produces_x_payment_header():
         }
     )
     assert "headers" in result
-    assert "X-Payment" in result["headers"]
-    assert len(result["headers"]["X-Payment"]) > 20
+    assert "PAYMENT-SIGNATURE" in result["headers"]
+    assert len(result["headers"]["PAYMENT-SIGNATURE"]) > 20

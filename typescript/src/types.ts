@@ -6,7 +6,9 @@
 export interface PaymentRequirement {
   scheme: string;
   network: string;
-  maxAmountRequired: string;
+  amount?: string;
+  /** @deprecated Legacy challenge field; v2 servers use `amount`. */
+  maxAmountRequired?: string;
   maxTimeoutSeconds: number;
   resource: string;
   description: string;
@@ -40,8 +42,7 @@ export interface PaymentRequiredResponse {
 /** The X-Payment header envelope before base64 encoding. */
 export interface X402PaymentEnvelope {
   x402Version: number;
-  scheme: string;
-  network: string;
+  accepted: PaymentRequirement;
   payload: SolanaPayload | EVMPayload | EVMUptoPayload;
 }
 

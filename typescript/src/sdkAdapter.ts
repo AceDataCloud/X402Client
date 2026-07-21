@@ -31,7 +31,13 @@ import type {
 /** Options for `createX402PaymentHandler`. */
 export interface X402PaymentHandlerOptions {
   /** Preferred payment network. */
-  network: 'solana' | 'base' | 'skale';
+  network:
+    | 'solana'
+    | 'base'
+    | 'skale'
+    | 'eip155:8453'
+    | 'eip155:1187947933'
+    | 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
   /** Solana wallet adapter (required if network=solana). */
   solanaWallet?: SolanaWalletAdapter;
   /** Optional Solana RPC used only to fetch a recent blockhash. */
@@ -84,6 +90,12 @@ function selectRequirement(
   return matches[0];
 }
 
+const NETWORK_ALIASES: Record<string, string> = {
+  base: 'eip155:8453',
+  skale: 'eip155:1187947933',
+  solana: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+};
+
 /**
  * Build a `PaymentHandler` function that `@acedatacloud/sdk` can invoke
  * when the API returns `402 Payment Required`.
@@ -93,30 +105,34 @@ export function createX402PaymentHandler(
 ): (ctx: SdkPaymentHandlerContext) => Promise<SdkPaymentHandlerResult> {
   const { network, solanaWallet, solanaRpcUrl, evmProvider, evmAddress, preferScheme } = options;
 
-  if (network === 'solana' && !solanaWallet) {
+  const canonicalNetwork = NETWORK_ALIASES[network] ?? network;
+  const isSolana = canonicalNetwork.startsWith('solana:');
+  const isEvm = canonicalNetwork.startsWith('eip155:');
+
+  if (isSolana && !solanaWallet) {
     throw new Error('solanaWallet is required when network="solana"');
   }
-  if ((network === 'base' || network === 'skale') && (!evmProvider || !evmAddress)) {
+  if (isEvm && (!evmProvider || !evmAddress)) {
     throw new Error('evmProvider and evmAddress are required for EVM networks');
   }
 
   return async function x402PaymentHandler(ctx: SdkPaymentHandlerContext) {
-    const requirement = selectRequirement(ctx.accepts, network, preferScheme);
+    const requirement = selectRequirement(ctx.accepts, canonicalNetwork, preferScheme);
     if (!requirement) {
       const available = ctx.accepts.map((a) => a.network).join(', ') || '<none>';
       throw new Error(
-        `X402: no payment requirement for network "${network}". Available: ${available}`
+        `X402: no payment requirement for network "${canonicalNetwork}". Available: ${available}`
       );
     }
 
     let envelope: X402PaymentEnvelope;
-    if (network === 'solana') {
+    if (isSolana) {
       envelope = await signSolanaPayment(requirement, solanaWallet!, solanaRpcUrl);
     } else if (requirement.scheme === 'upto') {
       envelope = await signEVMUptoPayment(requirement, evmProvider!, evmAddress!);
     } else {
       envelope = await signEVMPayment(requirement, evmProvider!, evmAddress!);
     }
-    return { headers: { 'X-Payment': encodePaymentHeader(envelope) } };
+    return { headers: { 'PAYMENT-SIGNATURE': encodePaymentHeader(envelope) } };
   };
 }

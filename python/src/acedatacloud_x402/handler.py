@@ -18,6 +18,11 @@ from .signing.solana import SolanaKeypairSigner, sign_solana_payment
 from .types import Network, PaymentRequirement, X402PaymentEnvelope
 
 PaymentHandlerResult = dict[str, dict[str, str]]
+NETWORK_ALIASES = {
+    "base": "eip155:8453",
+    "skale": "eip155:1187947933",
+    "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+}
 
 
 def _encode_payment_header(envelope: X402PaymentEnvelope) -> str:
@@ -71,21 +76,25 @@ def create_x402_payment_handler(
         for :class:`acedatacloud.AceDataCloud` /
         :class:`acedatacloud.AsyncAceDataCloud`.
     """
-    if network == "solana" and solana_signer is None:
+    canonical_network = NETWORK_ALIASES.get(network, network)
+    is_solana = canonical_network.startswith("solana:")
+    is_evm = canonical_network.startswith("eip155:")
+    if is_solana and solana_signer is None:
         raise ValueError('solana_signer is required when network="solana"')
-    if network in ("base", "skale") and evm_signer is None:
+    if is_evm and evm_signer is None:
         raise ValueError(f'evm_signer is required when network="{network}"')
 
     def handler(ctx: dict[str, Any]) -> PaymentHandlerResult:
         accepts: Sequence[PaymentRequirement] = ctx.get("accepts") or []
-        requirement = _select_requirement(accepts, network, prefer_scheme=prefer_scheme)
+        requirement = _select_requirement(accepts, canonical_network, prefer_scheme=prefer_scheme)
         if requirement is None:
             available = ", ".join(str(r.get("network")) for r in accepts) or "<none>"
             raise RuntimeError(
-                f'X402: no payment requirement for network "{network}". Available: {available}'
+                f'X402: no payment requirement for network "{canonical_network}". '
+                f"Available: {available}"
             )
 
-        if network == "solana":
+        if is_solana:
             assert solana_signer is not None  # guarded above
             envelope = sign_solana_payment(requirement, solana_signer, rpc_url=rpc_url)
         else:
@@ -95,6 +104,6 @@ def create_x402_payment_handler(
             else:
                 envelope = sign_evm_payment(requirement, evm_signer)
 
-        return {"headers": {"X-Payment": _encode_payment_header(envelope)}}
+        return {"headers": {"PAYMENT-SIGNATURE": _encode_payment_header(envelope)}}
 
     return handler

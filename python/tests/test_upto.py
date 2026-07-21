@@ -26,12 +26,12 @@ PAY_TO_ADDR = "0x4d2f00Dac0aCb02C7211cBDe2DbE9d86D7B7b2F2"
 USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 
-def _upto_requirement(*, ceiling: str = "4760750", network: str = "base") -> dict:
+def _upto_requirement(*, ceiling: str = "4760750", network: str = "eip155:8453") -> dict:
     """Mirror of an upto accept entry emitted by PlatformGateway."""
     return {
         "scheme": "upto",
         "network": network,
-        "maxAmountRequired": ceiling,
+        "amount": ceiling,
         "maxTimeoutSeconds": 3600,
         "resource": "https://x402.acedata.cloud/openai/chat/completions",
         "description": "AceDataCloud API call (metered)",
@@ -53,8 +53,8 @@ def test_upto_envelope_shape():
     envelope = sign_evm_upto_payment(_upto_requirement(), signer)
 
     assert envelope["x402Version"] == 2
-    assert envelope["scheme"] == "upto"
-    assert envelope["network"] == "base"
+    assert envelope["accepted"]["scheme"] == "upto"
+    assert envelope["accepted"]["network"] == "eip155:8453"
 
     payload = envelope["payload"]
     assert set(payload.keys()) == {"permit2Authorization", "signature"}
@@ -78,7 +78,7 @@ def test_upto_envelope_shape():
 def test_upto_default_valid_after_tolerates_chain_clock_lag():
     signer = EVMAccountSigner.from_private_key(TEST_PRIVATE_KEY)
     before = int(time.time())
-    envelope = sign_evm_upto_payment(_upto_requirement(network="skale"), signer)
+    envelope = sign_evm_upto_payment(_upto_requirement(network="eip155:1187947933"), signer)
     after = int(time.time())
     auth = envelope["payload"]["permit2Authorization"]
 
@@ -150,8 +150,8 @@ def test_handler_prefers_upto_when_requested():
     )
     exact_req = {
         "scheme": "exact",
-        "network": "base",
-        "maxAmountRequired": "95215",
+        "network": "eip155:8453",
+        "amount": "95215",
         "payTo": PAY_TO_ADDR,
         "asset": USDC_BASE,
         "extra": {
@@ -163,9 +163,9 @@ def test_handler_prefers_upto_when_requested():
     }
     accepts = [exact_req, _upto_requirement()]
     result = handler({"accepts": accepts})
-    header = result["headers"]["X-Payment"]
+    header = result["headers"]["PAYMENT-SIGNATURE"]
     envelope = json.loads(base64.b64decode(header))
-    assert envelope["scheme"] == "upto"
+    assert envelope["accepted"]["scheme"] == "upto"
     assert "permit2Authorization" in envelope["payload"]
 
 
@@ -179,8 +179,8 @@ def test_handler_falls_back_to_exact_when_upto_unavailable():
     )
     exact_req = {
         "scheme": "exact",
-        "network": "base",
-        "maxAmountRequired": "95215",
+        "network": "eip155:8453",
+        "amount": "95215",
         "payTo": PAY_TO_ADDR,
         "asset": USDC_BASE,
         "extra": {
@@ -191,6 +191,6 @@ def test_handler_falls_back_to_exact_when_upto_unavailable():
         },
     }
     result = handler({"accepts": [exact_req]})
-    envelope = json.loads(base64.b64decode(result["headers"]["X-Payment"]))
-    assert envelope["scheme"] == "exact"
+    envelope = json.loads(base64.b64decode(result["headers"]["PAYMENT-SIGNATURE"]))
+    assert envelope["accepted"]["scheme"] == "exact"
     assert "authorization" in envelope["payload"]
