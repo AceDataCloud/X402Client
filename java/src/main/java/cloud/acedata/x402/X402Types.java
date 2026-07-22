@@ -13,9 +13,9 @@ public final class X402Types {
 
     /** Supported payment networks. */
     public enum Network {
-        BASE("base"),
-        SKALE("skale"),
-        SOLANA("solana");
+        BASE("eip155:8453"),
+        SKALE("eip155:1187947933"),
+        SOLANA("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp");
 
         private final String wire;
 
@@ -23,7 +23,7 @@ public final class X402Types {
             this.wire = wire;
         }
 
-        /** Returns the lowercase wire name used on the server. */
+        /** Returns the canonical CAIP-2 network identifier used on the v2 wire. */
         public String wire() {
             return wire;
         }
@@ -50,6 +50,7 @@ public final class X402Types {
     public static final class PaymentRequirement {
         private final String scheme;
         private final String network;
+        private final String amount;
         private final String maxAmountRequired;
         private final int maxTimeoutSeconds;
         private final String resource;
@@ -61,6 +62,7 @@ public final class X402Types {
         public PaymentRequirement(
                 String scheme,
                 String network,
+            String amount,
                 String maxAmountRequired,
                 int maxTimeoutSeconds,
                 String resource,
@@ -70,6 +72,7 @@ public final class X402Types {
                 Map<String, Object> extra) {
             this.scheme = scheme;
             this.network = network;
+            this.amount = amount;
             this.maxAmountRequired = maxAmountRequired;
             this.maxTimeoutSeconds = maxTimeoutSeconds;
             this.resource = resource;
@@ -77,6 +80,36 @@ public final class X402Types {
             this.payTo = payTo;
             this.asset = asset;
             this.extra = extra == null ? Map.of() : Map.copyOf(extra);
+        }
+
+        /**
+         * Builds a requirement from the legacy challenge field.
+         *
+         * @deprecated Official v2 challenges use {@code amount}; use the constructor that accepts
+         *     both {@code amount} and {@code maxAmountRequired}.
+         */
+        @Deprecated(since = "0.2.0", forRemoval = false)
+        public PaymentRequirement(
+                String scheme,
+                String network,
+                String maxAmountRequired,
+                int maxTimeoutSeconds,
+                String resource,
+                String description,
+                String payTo,
+                String asset,
+                Map<String, Object> extra) {
+            this(
+                    scheme,
+                    network,
+                    null,
+                    maxAmountRequired,
+                    maxTimeoutSeconds,
+                    resource,
+                    description,
+                    payTo,
+                    asset,
+                    extra);
         }
 
         public String scheme() {
@@ -87,8 +120,21 @@ public final class X402Types {
             return network;
         }
 
+        public String amount() {
+            return amount;
+        }
+
+        /**
+         * @deprecated Legacy challenge field; official v2 challenges use {@link #amount()}.
+         */
+        @Deprecated(since = "0.2.0", forRemoval = false)
         public String maxAmountRequired() {
             return maxAmountRequired;
+        }
+
+        /** Returns the official amount, falling back to the legacy challenge field. */
+        public String effectiveAmount() {
+            return amount != null ? amount : maxAmountRequired;
         }
 
         public int maxTimeoutSeconds() {

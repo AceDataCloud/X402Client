@@ -35,7 +35,7 @@ export X402_PRIVATE_KEY=0x...     # a wallet holding USDC on the chosen network
 ## The one shared idea
 
 A framework "tool" is just a function. Inside it, call the AceData SDK with an
-x402 payment handler attached — the handler signs an `X-Payment` header when the
+x402 payment handler attached — the handler signs a `PAYMENT-SIGNATURE` header when the
 API answers `402 Payment Required`, and the SDK retries transparently:
 
 ```python
@@ -52,6 +52,9 @@ client = AceDataCloud(
 # client.openai.chat.completions.create(...) / client.images.generate(...) now
 # cost USDC per call — no account, no API key.
 ```
+
+The handler accepts `base`, `skale`, and `solana` as configuration aliases;
+x402 v2 requirements on the wire use canonical CAIP-2 network IDs.
 
 > These are illustrative examples, not a published package. Run them against a
 > testnet wallet first. For metered endpoints (chat, image edits) the handler

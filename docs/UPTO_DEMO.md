@@ -21,18 +21,18 @@ below — you should expect the same shape when you reproduce it.
 The basic x402 dance is the same as the [SKALE / Base `exact` demo](./SKALE_DEMO.md):
 
 1. Client hits the API with no auth → server replies `402` + `accepts[]`.
-2. Client signs an envelope, retries with `X-Payment`.
+2. Client signs an envelope, retries with `PAYMENT-SIGNATURE`.
 3. Server returns `200` + the API result.
 
 The difference is **when and how much you settle**:
 
 | Scheme  | What gets signed                                              | What gets settled                                                       |
 | ------- | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `exact` | An EIP-3009 `TransferWithAuthorization` for a fixed amount    | Exactly `maxAmountRequired` (the quoted price)                          |
+| `exact` | An EIP-3009 `TransferWithAuthorization` for a fixed amount    | Exactly `amount` (the quoted price)                                    |
 | `upto`  | A Permit2 `PermitWitnessTransferFrom` for a **ceiling** amount | The real post-inference cost (≤ the ceiling), deferred to `/record`     |
 
 Concretely: for `claude-sonnet-4-5-20250929` the 402 may quote
-`maxAmountRequired = 4760750` (≈ $4.76 — enough to cover any reasonable chat
+`amount = 4760750` (≈ $4.76 — enough to cover any reasonable chat
 turn), but the actual settlement we recorded was only **151 atomic** ≈ $0.000151,
 matching the real token usage. The user signs once, the server settles once,
 and the on-chain transfer is the truth.
@@ -58,7 +58,8 @@ and the on-chain transfer is the truth.
 │  (PlatformGateway)      │
 └────────────┬────────────┘
              │ 2. 402 Payment Required
-             │    accepts: [exact-base, upto-base, exact-skale, exact-solana, ...]
+             │    accepts: [exact-eip155:8453, upto-eip155:8453,
+             │              exact-eip155:1187947933, exact-solana:5eyk..., ...]
              ▼
 ┌─────────────────────────┐
 │  Client signs Permit2   │   ← this PR's signEVMUptoPayment /
@@ -67,7 +68,7 @@ and the on-chain transfer is the truth.
 │     maxAmount, ceiling) │
 └────────────┬────────────┘
              │ 3. POST /v1/chat/completions
-             │    X-Payment: <base64 envelope>
+             │    PAYMENT-SIGNATURE: <base64 envelope>
              ▼
 ┌─────────────────────────┐     5. async /record(traceId, actualCost)
 │  x402.acedata.cloud     │ ───────────────────────────────────────┐
@@ -91,7 +92,7 @@ Two takeaways:
 1. **The client does NOT broadcast anything.** It signs a Permit2 EIP-712
    payload. The facilitator broadcasts the settle tx after the LLM responds.
 2. **The settle tx amount is bounded by the witness ceiling.** Even if the
-   facilitator were malicious, it couldn't pull more than `maxAmountRequired`
+  facilitator were malicious, it couldn't pull more than `amount`
    from the 402 — Permit2 enforces this on-chain via the witness hash.
 
 ---
@@ -213,8 +214,8 @@ content-type: application/json
   "x402Version": 2,
   "error": "Payment Required",
   "accepts": [
-    {"scheme": "exact", "network": "base",   "maxAmountRequired": "4760750", "extra": { "name": "USD Coin", "version": "2", … }},
-    {"scheme": "upto",  "network": "base",   "maxAmountRequired": "4760750",
+    {"scheme": "exact", "network": "eip155:8453", "amount": "4760750", "extra": { "name": "USD Coin", "version": "2", … }},
+    {"scheme": "upto",  "network": "eip155:8453", "amount": "4760750",
        "payTo":  "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7",
        "asset":  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
        "extra":  {
@@ -225,18 +226,18 @@ content-type: application/json
          "proxyAddress":      "0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002",
          "facilitatorAddress":"0xd019238EAA8a9Ca13C5792Ca10B4029D6ce25708"
        }},
-    {"scheme": "exact", "network": "skale",  "maxAmountRequired": "4760750", …},
-    {"scheme": "exact", "network": "solana", "maxAmountRequired": "4760750", …}
+    {"scheme": "exact", "network": "eip155:1187947933", "amount": "4760750", …},
+    {"scheme": "exact", "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "amount": "4760750", …}
   ]
 }
 ```
 
 What to point out:
 
-- For chat the gateway emits **two Base entries**: `exact` (legacy, signs the
+- For chat the gateway emits **two Base entries**: `exact` (signs the
   full ceiling) and `upto` (this PR, settles real cost). Older clients that
   don't know about upto still work — they pick `exact` and overpay.
-- `maxAmountRequired = 4760750` is the **ceiling** (≈ $4.76). Real cost will be
+- `amount = 4760750` is the **ceiling** (≈ $4.76). Real cost will be
   ~$0.0002. The point of `upto` is that the user signs the ceiling but only
   pays the real cost.
 - `extra.facilitatorAddress` is what the witness binds: only that address can
@@ -265,20 +266,20 @@ here so you can read every line in
    (`eth_signTypedData_v4` → `wallet.signTypedData`) so the SDK never needs a
    browser.
 2. POST `/v1/chat/completions` with `claude-sonnet-4-5-20250929`, expect
-   `402`, pick the entry where `scheme === 'upto'` && `network === 'base'`.
+  `402`, pick the entry where `scheme === 'upto'` && `network === 'eip155:8453'`.
 3. Build a Permit2 `PermitWitnessTransferFrom` typed-data payload:
    - **domain**: `{ name: "Permit2", chainId, verifyingContract: PERMIT2 }`
      (NB: **no `version` field** — Permit2 was deployed without one)
-   - **permitted**: `{ token: asset, amount: maxAmountRequired }`
+  - **permitted**: `{ token: asset, amount: requirement.amount ?? requirement.maxAmountRequired }`
    - **spender**: `extra.proxyAddress` (the `X402UptoPermit2Proxy`)
    - **nonce**: 256 random bits (Permit2 enforces single-use per `(owner, nonce)`)
    - **deadline**: `validAfter + maxTimeoutSeconds`
    - **witness**: a `Witness` struct binding `recipient = payTo`,
-     `maxAmount = maxAmountRequired`, `facilitator = extra.facilitatorAddress`
+    `maxAmount = requirement.amount ?? requirement.maxAmountRequired`,
+    `facilitator = extra.facilitatorAddress`
 4. `wallet.signTypedData(domain, types, value)` → 65-byte signature.
-5. Wrap into the x402 envelope (`scheme=upto`, `network=base`,
-   `payload.permit2Authorization = {permit, witness, spender, signature}`),
-   base64 the envelope, drop into `X-Payment`, replay the request.
+5. Use the signer's canonical `{x402Version: 2, accepted: requirement, payload}`
+  envelope, base64 it, drop it into `PAYMENT-SIGNATURE`, and replay the request.
 6. After `200`, the response includes `x-usage-exempt: true` — the gateway's
    signal that the facilitator will settle **deferred** based on real usage
    (not the signed ceiling). Print the trace_id, status, latency, body
@@ -305,7 +306,7 @@ Endpoint:     POST https://x402.acedata.cloud/v1/chat/completions
    deadline: 1780215797
    signature: 0x9943c8d83cc7825349…3a0a3a871c
 
---- Step 3: Retry with X-Payment → expect 200 ---
+--- Step 3: Retry with PAYMENT-SIGNATURE → expect 200 ---
    Status: 200 in 5.76s
    trace_id: <absent>
    x-usage-exempt: true

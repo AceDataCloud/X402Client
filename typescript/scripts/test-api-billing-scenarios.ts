@@ -4,10 +4,11 @@
  * Walks a list of { apiPath, payload, expectedCredits, expectedUsd } scenarios
  * and for each one:
  *   1. Sends the request with no auth → asserts 402 with an x402 `accepts` list.
- *   2. Verifies that the Base `maxAmountRequired` matches the locally predicted
+ *   2. Verifies that the Base amount matches the locally predicted
  *      cost (expectedCredits × 0.095215 × 1e6 atomic USDC) → proves pricing is
  *      dynamic and derived from cost/api/<uuid>.json at runtime.
- *   3. Signs an EIP-712 TransferWithAuthorization and retries with `X-Payment`
+ *   3. Signs an EIP-712 TransferWithAuthorization and retries with
+ *      `PAYMENT-SIGNATURE`
  *      on Base → asserts 2xx.
  *   4. Polls CLS `api-usages` for the caller wallet until the matching
  *      ApiUsage record lands → asserts `used_amount` ≈ expectedCredits and
@@ -35,11 +36,13 @@ import { Wallet } from 'ethers';
 
 const CREDITS_TO_USDC_RATE = 0.095215;
 const USDC_DECIMALS = 6;
+const BASE_NETWORK = 'eip155:8453';
 
 interface PaymentRequirement {
   scheme: string;
   network: string;
-  maxAmountRequired: string;
+  amount?: string;
+  maxAmountRequired?: string;
   maxTimeoutSeconds: number;
   resource: string;
   description: string;
@@ -146,7 +149,7 @@ async function parseBody(res: Response): Promise<unknown> {
 
 function getRequirement(
   body: unknown,
-  network: 'base',
+  network: string,
 ): PaymentRequirement | null {
   const accepts = Array.isArray((body as { accepts?: PaymentRequirement[] } | null)?.accepts)
     ? (body as { accepts: PaymentRequirement[] }).accepts
@@ -250,7 +253,7 @@ function prettyAtomic(atomic: string): string {
 }
 
 function explorer(network: string, tx: string): string | null {
-  if (network === 'base') return `https://basescan.org/tx/${tx}`;
+  if (network === BASE_NETWORK) return `https://basescan.org/tx/${tx}`;
   return null;
 }
 
@@ -279,9 +282,9 @@ async function runScenario(
   const body1 = await parseBody(res1);
   console.log(`  step 1 (no auth): ${res1.status}`);
 
-  const requirement = getRequirement(body1, 'base');
+  const requirement = getRequirement(body1, BASE_NETWORK);
   if (!requirement) {
-    failReasons.push('no base requirement in 402 accepts');
+    failReasons.push(`no ${BASE_NETWORK} requirement in 402 accepts`);
     return {
       scenario,
       firstStatus: res1.status,
@@ -300,7 +303,10 @@ async function runScenario(
     };
   }
 
-  const advertisedAtomic = requirement.maxAmountRequired;
+  const advertisedAtomic = requirement.amount ?? requirement.maxAmountRequired;
+  if (!advertisedAtomic) {
+    throw new Error(`Payment requirement for ${BASE_NETWORK} has no amount.`);
+  }
   const pricingMatches = advertisedAtomic === expectedAtomic;
   console.log(
     `  advertised: ${advertisedAtomic} (${prettyAtomic(advertisedAtomic)} USDC) | expected: ${expectedAtomic} | match: ${pricingMatches}`,
@@ -316,7 +322,7 @@ async function runScenario(
   const authorization = {
     from: wallet.address,
     to: requirement.payTo,
-    value: BigInt(requirement.maxAmountRequired).toString(),
+    value: BigInt(advertisedAtomic).toString(),
     validAfter: String(now),
     validBefore: String(now + (requirement.maxTimeoutSeconds || 120)),
     nonce: randomNonce32(),
@@ -338,20 +344,19 @@ async function runScenario(
     ],
   };
   const signature = await wallet.signTypedData(domain, types, authorization);
-  const xPayment = toBase64({
+  const paymentSignature = toBase64({
     x402Version: 2,
-    scheme: requirement.scheme || 'exact',
-    network: 'base',
+    accepted: requirement,
     payload: { authorization, signature },
   });
 
   const res2 = await fetch(`${apiBase}${scenario.apiPath}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Payment': xPayment },
+    headers: { 'Content-Type': 'application/json', 'PAYMENT-SIGNATURE': paymentSignature },
     body: JSON.stringify(scenario.payload),
   });
   const body2 = await parseBody(res2);
-  console.log(`  step 2 (with X-Payment): ${res2.status}`);
+  console.log(`  step 2 (with PAYMENT-SIGNATURE): ${res2.status}`);
   if (res2.status < 200 || res2.status >= 300) {
     failReasons.push(`paid call status ${res2.status}`);
     const snippet = typeof body2 === 'string' ? body2.slice(0, 200) : JSON.stringify(body2).slice(0, 200);

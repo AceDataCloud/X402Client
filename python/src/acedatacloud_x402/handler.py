@@ -62,7 +62,8 @@ def create_x402_payment_handler(
     """Build a ``payment_handler`` function the SDK can invoke on 402.
 
     Args:
-        network: Target payment network (``"solana"``, ``"base"``, or ``"skale"``).
+        network: Target payment network. The ``"solana"``, ``"base"``, and
+            ``"skale"`` aliases map to canonical CAIP-2 wire network IDs.
         evm_signer: Required for ``base`` / ``skale``.
         solana_signer: Required for ``solana``.
         rpc_url: Optional Solana RPC override.
@@ -72,7 +73,7 @@ def create_x402_payment_handler(
             back to the first entry the server returns.
 
     Returns:
-        A callable ``(ctx) -> {"headers": {"X-Payment": "..."}}`` suitable
+        A callable ``(ctx) -> {"headers": {"PAYMENT-SIGNATURE": "..."}}`` suitable
         for :class:`acedatacloud.AceDataCloud` /
         :class:`acedatacloud.AsyncAceDataCloud`.
     """

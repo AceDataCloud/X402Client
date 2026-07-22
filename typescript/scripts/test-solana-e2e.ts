@@ -1,7 +1,7 @@
 /**
  * Real E2E test: X402 payment flow on Solana.
  *
- * Flow: POST without auth → 402 → build Solana tx (facilitator fee payer) → partial sign → X-Payment → retry
+ * Flow: POST without auth → 402 → build Solana tx (facilitator fee payer) → partial sign → PAYMENT-SIGNATURE → retry
  *
  * Required env: X402B_SOLANA_PAYER_PRIVATE_KEY (base58 secret key)
  * Optional env: SOLANA_RPC_URL, X402B_SOLANA_FACILITATOR_ADDRESS, API_BASE
@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { VersionedTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { signSolanaPayment } from '../src/solana.ts';
+
+const SOLANA_NETWORK = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
 
 function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;
@@ -56,7 +58,8 @@ const TEST_BODY = process.env.TEST_BODY
 interface PaymentRequirement {
   scheme: string;
   network: string;
-  maxAmountRequired: string;
+  amount?: string;
+  maxAmountRequired?: string;
   maxTimeoutSeconds: number;
   resource: string;
   payTo: string;
@@ -95,15 +98,19 @@ async function main() {
   }
 
   const body402 = (await res1.json()) as { accepts: PaymentRequirement[] };
-  const solReq = body402.accepts.find((a) => a.network === 'solana');
+  const solReq = body402.accepts.find((a) => a.network === SOLANA_NETWORK);
   if (!solReq) {
-    console.log('ERROR: No solana network in 402 response');
+    console.log(`ERROR: No ${SOLANA_NETWORK} network in 402 response`);
     console.log('Available:', body402.accepts.map((a) => a.network));
     process.exit(1);
   }
-  const amount = BigInt(solReq.maxAmountRequired);
-  console.log(`✅ Got 402 with solana payment requirement`);
-  console.log(`   Amount: ${solReq.maxAmountRequired} (${Number(amount) / 1e6} USDC)`);
+  const amountValue = solReq.amount ?? solReq.maxAmountRequired;
+  if (!amountValue) {
+    throw new Error(`Payment requirement for ${SOLANA_NETWORK} has no amount.`);
+  }
+  const amount = BigInt(amountValue);
+  console.log(`✅ Got 402 with ${SOLANA_NETWORK} payment requirement`);
+  console.log(`   Amount: ${amountValue} (${Number(amount) / 1e6} USDC)`);
   console.log(`   PayTo: ${solReq.payTo}`);
   console.log(`   Asset (USDC mint): ${solReq.asset}\n`);
 
@@ -123,18 +130,18 @@ async function main() {
   const serializedTx = 'transaction' in envelope.payload ? envelope.payload.transaction : '';
   console.log(`   Serialized tx length: ${serializedTx.length} chars\n`);
 
-  // Step 3: Build X-Payment header
-  console.log('--- Step 3: Build X-Payment envelope ---');
-  const xPayment = btoa(JSON.stringify(envelope));
-  console.log(`   X-Payment header length: ${xPayment.length} chars\n`);
+  // Step 3: Build PAYMENT-SIGNATURE header from the canonical signer envelope
+  console.log('--- Step 3: Build PAYMENT-SIGNATURE envelope ---');
+  const paymentSignature = btoa(JSON.stringify(envelope));
+  console.log(`   PAYMENT-SIGNATURE header length: ${paymentSignature.length} chars\n`);
 
-  // Step 4: Retry with X-Payment header
-  console.log('--- Step 4: Retry POST with X-Payment ---');
+  // Step 4: Retry with PAYMENT-SIGNATURE header
+  console.log('--- Step 4: Retry POST with PAYMENT-SIGNATURE ---');
   const res2 = await fetch(`${API_BASE}${TEST_API_PATH}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Payment': xPayment,
+      'PAYMENT-SIGNATURE': paymentSignature,
     },
     body: JSON.stringify(TEST_BODY),
   });

@@ -4,7 +4,7 @@
  * Flow:
  *   1. POST without auth → 402 with `accepts: [exact, upto]`
  *   2. Build PermitWitnessTransferFrom typed data → sign with the payer wallet
- *   3. Retry with `X-Payment` header → 200 + worker-served chat response
+ *   3. Retry with `PAYMENT-SIGNATURE` header → 200 + worker-served chat response
  *   4. Print the gateway-supplied trace ID and settlement hints
  *
  * Prereqs:
@@ -21,6 +21,9 @@ import { Wallet } from 'ethers';
 
 import { signEVMUptoPayment } from '../src/index.js';
 import type { EVMProvider, PaymentRequirement } from '../src/index.js';
+
+const BASE_NETWORK = 'eip155:8453';
+const SKALE_NETWORK = 'eip155:1187947933';
 
 function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;
@@ -43,9 +46,9 @@ loadEnvFile(resolve(scriptDir, '../../../.claude/.env'));
 loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
 const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
-const NETWORK = (process.env.X402_UPTO_NETWORK || 'base').toLowerCase();
-if (!['base', 'skale'].includes(NETWORK)) {
-  console.error(`ERROR: X402_UPTO_NETWORK must be "base" or "skale", got ${NETWORK}`);
+const NETWORK = process.env.X402_UPTO_NETWORK || BASE_NETWORK;
+if (![BASE_NETWORK, SKALE_NETWORK].includes(NETWORK)) {
+  console.error(`ERROR: X402_UPTO_NETWORK must be "${BASE_NETWORK}" or "${SKALE_NETWORK}", got ${NETWORK}`);
   process.exit(1);
 }
 const TEST_API_PATH = process.env.TEST_API_PATH || '/v1/chat/completions';
@@ -57,7 +60,7 @@ const TEST_BODY = process.env.TEST_BODY
       max_tokens: 40,
     };
 
-const keyEnvName = NETWORK === 'skale' ? 'SKALE_BASE_PRIVATE_KEY' : 'X402B_BASE_PAYER_PRIVATE_KEY';
+const keyEnvName = NETWORK === SKALE_NETWORK ? 'SKALE_BASE_PRIVATE_KEY' : 'X402B_BASE_PAYER_PRIVATE_KEY';
 const rawKey = process.env[keyEnvName]?.trim();
 if (!rawKey) {
   console.error(`ERROR: ${keyEnvName} is missing. Add it to .claude/.env or PlatformBackend/.env.`);
@@ -117,9 +120,13 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  const ceiling = Number(upto.maxAmountRequired) / 1e6;
+  const amount = upto.amount ?? upto.maxAmountRequired;
+  if (!amount) {
+    throw new Error(`Payment requirement for ${NETWORK} has no amount.`);
+  }
+  const ceiling = Number(amount) / 1e6;
   console.log(`   Scheme:   upto`);
-  console.log(`   Ceiling:  ${upto.maxAmountRequired} atomic (${ceiling} USDC)`);
+  console.log(`   Ceiling:  ${amount} atomic (${ceiling} USDC)`);
   console.log(`   PayTo:    ${upto.payTo}`);
   console.log(`   PayUSDC:  ${upto.asset}`);
   console.log(`   ChainId:  ${upto.extra?.chainId ?? '<missing>'}`);
@@ -137,15 +144,15 @@ async function main(): Promise<void> {
   console.log(
     `   signature: ${payload.signature.slice(0, 20)}...${payload.signature.slice(-10)}\n`
   );
-  const xPayment = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64');
+  const paymentSignature = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64');
 
-  console.log('--- Step 3: Retry with X-Payment → expect 200 ---');
+  console.log('--- Step 3: Retry with PAYMENT-SIGNATURE → expect 200 ---');
   const t0 = Date.now();
   const res2 = await fetch(`${API_BASE}${TEST_API_PATH}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Payment': xPayment,
+      'PAYMENT-SIGNATURE': paymentSignature,
     },
     body: JSON.stringify(TEST_BODY),
   });

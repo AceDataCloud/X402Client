@@ -4,10 +4,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Contract, JsonRpcProvider, Wallet } from 'ethers';
 
+const SKALE_NETWORK = 'eip155:1187947933';
+
 interface PaymentRequirement {
   scheme: string;
   network: string;
-  maxAmountRequired: string;
+  amount?: string;
+  maxAmountRequired?: string;
   maxTimeoutSeconds: number;
   resource: string;
   description: string;
@@ -120,10 +123,10 @@ function logHttpRequest(
   console.log(`  > ${label}`);
   console.log(`  > ${method} ${url}`);
   for (const [name, value] of Object.entries(headers)) {
-    // X-Payment can be 600+ bytes of base64; abbreviate it so the demo log
+    // PAYMENT-SIGNATURE can be 600+ bytes of base64; abbreviate it so the demo log
     // stays readable. Everything else is printed verbatim.
     const display =
-      name.toLowerCase() === 'x-payment'
+      name.toLowerCase() === 'payment-signature'
         ? `${value.slice(0, 32)}…${value.slice(-16)}  (${value.length} bytes base64, decoded above)`
         : value;
     console.log(`  > ${name}: ${display}`);
@@ -213,14 +216,18 @@ async function main() {
 
   console.log(`accepts[]: ${accepts.map((item) => item.network).join(', ') || '(none)'}`);
 
-  const skaleRequirement = accepts.find((item) => item.network === 'skale');
+  const skaleRequirement = accepts.find((item) => item.network === SKALE_NETWORK);
   if (!skaleRequirement) {
-    console.log('No skale payment requirement in 402 response.');
+    console.log(`No ${SKALE_NETWORK} payment requirement in 402 response.`);
     console.log(JSON.stringify(body1, null, 2));
     process.exit(1);
   }
 
   const decimals = skaleRequirement.extra?.decimals ?? 6;
+  const amount = skaleRequirement.amount ?? skaleRequirement.maxAmountRequired;
+  if (!amount) {
+    throw new Error(`Payment requirement for ${SKALE_NETWORK} has no amount.`);
+  }
   const chainId = Number(skaleRequirement.extra?.chainId ?? 1187947933);
   const verifyingContract =
     skaleRequirement.extra?.verifyingContract || skaleRequirement.asset;
@@ -228,8 +235,8 @@ async function main() {
   console.log('Selected SKALE payment requirement:');
   console.log(`  scheme:            ${skaleRequirement.scheme}`);
   console.log(
-    `  amount:            ${skaleRequirement.maxAmountRequired} (${formatAmount(
-      skaleRequirement.maxAmountRequired,
+    `  amount:            ${amount} (${formatAmount(
+      amount,
       decimals,
     )} USDC)`,
   );
@@ -268,7 +275,7 @@ async function main() {
   const authorization = {
     from: wallet.address,
     to: skaleRequirement.payTo,
-    value: BigInt(skaleRequirement.maxAmountRequired).toString(),
+    value: BigInt(amount).toString(),
     validAfter: String(now),
     validBefore: String(now + (skaleRequirement.maxTimeoutSeconds || 120)),
     nonce: randomNonce32(),
@@ -298,17 +305,16 @@ async function main() {
 
   const envelope = {
     x402Version: 2,
-    scheme: skaleRequirement.scheme || 'exact',
-    network: 'skale',
+    accepted: skaleRequirement,
     payload: {
       authorization,
       signature,
     },
   };
 
-  const xPayment = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64');
+  const paymentSignature = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64');
 
-  console.log(`Signed in ${tSignElapsed} ms.  X-Payment header is ${xPayment.length} bytes.`);
+  console.log(`Signed in ${tSignElapsed} ms.  PAYMENT-SIGNATURE header is ${paymentSignature.length} bytes.`);
   console.log('Signed envelope (decoded):');
   console.log('  domain:');
   console.log(`    name:              "${domain.name}"`);
@@ -331,11 +337,11 @@ async function main() {
   console.log(`  signature:   ${shortHex(signature, 12, 12)}  (${signature.length - 2}/2 hex chars)`);
   console.log('');
 
-  console.log(`--- Step 3: Retry ${testApiPath} with X-Payment ---`);
+  console.log(`--- Step 3: Retry ${testApiPath} with PAYMENT-SIGNATURE ---`);
   const url3 = `${apiBase}${testApiPath}`;
   const headers3: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Payment': xPayment,
+    'PAYMENT-SIGNATURE': paymentSignature,
   };
   const body3Text = JSON.stringify(testBody);
 
@@ -476,7 +482,7 @@ async function main() {
   console.log(`  402 round-trip:        ${t1Elapsed} ms`);
   console.log(`  EIP-712 sign:          ${tSignElapsed} ms`);
   console.log(`  paid call round-trip:  ${t3Elapsed} ms`);
-  console.log(`  paid:                  ${formatAmount(skaleRequirement.maxAmountRequired, decimals)} USDC on SKALE`);
+  console.log(`  paid:                  ${formatAmount(amount, decimals)} USDC on SKALE`);
   if (settlementTxHash) {
     console.log(`  settlement:            ${SKALE_EXPLORER}/tx/${settlementTxHash}`);
   }

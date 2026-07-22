@@ -39,7 +39,7 @@ export interface PaymentRequiredResponse {
   error?: string;
 }
 
-/** The X-Payment header envelope before base64 encoding. */
+/** The PAYMENT-SIGNATURE header envelope before base64 encoding. */
 export interface X402PaymentEnvelope {
   x402Version: number;
   accepted: PaymentRequirement;

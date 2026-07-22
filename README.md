@@ -10,7 +10,7 @@ This is a monorepo with one package per language, each designed as a **plugin** 
 | TypeScript | [`@acedatacloud/x402-client`](./typescript) — npm                          | [`@acedatacloud/sdk`](https://github.com/AceDataCloud/SDK) |
 | Python     | [`acedatacloud-x402`](./python) — PyPI                                     | [`acedatacloud`](https://pypi.org/project/acedatacloud/)   |
 
-The SDK does all the API work (task polling, SSE streaming, retries, typed errors). This package only contributes one thing: signing an `X-Payment` header when the server returns `402 Payment Required`.
+The SDK does all the API work (task polling, SSE streaming, retries, typed errors). This package only contributes one thing: signing a `PAYMENT-SIGNATURE` header when the server returns `402 Payment Required`.
 
 - 🟦 **Base** — USDC (ERC-20) via EIP-3009 `TransferWithAuthorization` (`exact` scheme) **and** Permit2 `PermitWitnessTransferFrom` (`upto` scheme — pay-only-what-you-used metering for chat / streaming APIs)
 - 🟪 **Solana** — USDC (SPL) via signed `TransferChecked`
@@ -22,8 +22,8 @@ Two settlement modes:
 
 | Scheme  | Used for                                  | What gets settled                                   |
 | ------- | ----------------------------------------- | --------------------------------------------------- |
-| `exact` | Fixed-price endpoints (image, video, ...) | Exactly `maxAmountRequired` from the 402            |
-| `upto`  | Metered endpoints (chat, completions)     | Real cost (≤ `maxAmountRequired`), deferred settle  |
+| `exact` | Fixed-price endpoints (image, video, ...) | Exactly `amount` from the 402            |
+| `upto`  | Metered endpoints (chat, completions)     | Real cost (≤ `amount`), deferred settle  |
 
 ---
 
@@ -37,9 +37,9 @@ SDK call (no Bearer token)
                                                              │
                                              payment handler │ (this package)
                                                              ▼
-                                                    sign X-Payment envelope
+                                              sign PAYMENT-SIGNATURE envelope
                                                              │
-      ◀────────────── retry with X-Payment ──────────────────┘
+      ◀────────── retry with PAYMENT-SIGNATURE ──────────────┘
 200 OK (+ x402_tx hash in headers)
 ```
 
@@ -93,6 +93,11 @@ const client = new AceDataCloud({
 ```
 
 See **[typescript/README.md](./typescript/README.md)** for the full guide.
+
+The handler accepts the convenient `base`, `skale`, and `solana` configuration
+aliases shown above. On the x402 v2 wire, payment requirements always use
+canonical CAIP-2 network IDs: `eip155:8453`, `eip155:1187947933`, and
+`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
 
 ## Quick start (Python)
 

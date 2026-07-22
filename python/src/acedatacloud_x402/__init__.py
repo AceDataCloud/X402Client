@@ -1,7 +1,7 @@
 """X402 payment protocol client for AceDataCloud APIs (Python).
 
 Plug-in for `acedatacloud`: when an API returns ``402 Payment Required``,
-this package signs the payment envelope and returns it as an ``X-Payment``
+this package signs the payment envelope and returns it as a ``PAYMENT-SIGNATURE``
 header. The SDK retries the request transparently.
 
     from acedatacloud import AceDataCloud

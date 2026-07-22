@@ -8,10 +8,15 @@ import { Keypair, VersionedTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { signSolanaPayment } from '../src/solana.ts';
 
+const BASE_NETWORK = 'eip155:8453';
+const SKALE_NETWORK = 'eip155:1187947933';
+const SOLANA_NETWORK = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+
 interface PaymentRequirement {
   scheme: string;
   network: string;
-  maxAmountRequired: string;
+  amount?: string;
+  maxAmountRequired?: string;
   maxTimeoutSeconds: number;
   resource: string;
   description: string;
@@ -49,7 +54,7 @@ interface TraceEntry {
 }
 
 interface ScenarioResult {
-  network: 'base' | 'solana' | 'skale';
+  network: string;
   wallet: string;
   requirement: PaymentRequirement;
   firstStatus: number;
@@ -127,9 +132,9 @@ function formatAmount(amount: string, decimals = 6): string {
 
 function getExplorerLink(network: string, txHash: string): string | null {
   if (!txHash) return null;
-  if (network === 'base') return `https://basescan.org/tx/${txHash}`;
-  if (network === 'skale') return `https://skale-base-explorer.skalenodes.com/tx/${txHash}`;
-  if (network === 'solana') return `https://explorer.solana.com/tx/${txHash}?cluster=mainnet-beta`;
+  if (network === BASE_NETWORK) return `https://basescan.org/tx/${txHash}`;
+  if (network === SKALE_NETWORK) return `https://skale-base-explorer.skalenodes.com/tx/${txHash}`;
+  if (network === SOLANA_NETWORK) return `https://explorer.solana.com/tx/${txHash}?cluster=mainnet-beta`;
   return null;
 }
 
@@ -302,7 +307,7 @@ async function waitForUsage(userId: string, startedAfterMs: number): Promise<{
   };
 }
 
-async function getRequirement(network: 'base' | 'solana' | 'skale', body: unknown): Promise<PaymentRequirement> {
+async function getRequirement(network: string, body: unknown): Promise<PaymentRequirement> {
   const accepts = Array.isArray((body as { accepts?: PaymentRequirement[] } | null)?.accepts)
     ? ((body as { accepts: PaymentRequirement[] }).accepts)
     : [];
@@ -349,8 +354,10 @@ async function runBaseScenario(): Promise<ScenarioResult> {
   console.log('Step 1: POST without auth');
   const { res: res1, body: body1, startedAfterMs, chatBody } = await request402(marker);
   console.log(`  Status: ${res1.status}`);
-  const requirement = await getRequirement('base', body1);
-  console.log(`  amount: ${requirement.maxAmountRequired} (${formatAmount(requirement.maxAmountRequired)} USDC)`);
+  const requirement = await getRequirement(BASE_NETWORK, body1);
+  const amount = requirement.amount ?? requirement.maxAmountRequired;
+  if (!amount) throw new Error(`Payment requirement for ${BASE_NETWORK} has no amount.`);
+  console.log(`  amount: ${amount} (${formatAmount(amount)} USDC)`);
   console.log(`  payTo: ${requirement.payTo}`);
   console.log(`  asset: ${requirement.asset}`);
 
@@ -359,7 +366,7 @@ async function runBaseScenario(): Promise<ScenarioResult> {
   const authorization = {
     from: wallet.address,
     to: requirement.payTo,
-    value: BigInt(requirement.maxAmountRequired).toString(),
+    value: BigInt(amount).toString(),
     validAfter: String(now),
     validBefore: String(now + (requirement.maxTimeoutSeconds || 120)),
     nonce: randomNonce32(),
@@ -383,18 +390,17 @@ async function runBaseScenario(): Promise<ScenarioResult> {
   const signature = await wallet.signTypedData(domain, types, authorization);
   console.log(`  signature: ${signature.slice(0, 18)}...${signature.slice(-10)}`);
 
-  console.log('Step 3: Retry with X-Payment');
-  const xPayment = toBase64({
+  console.log('Step 3: Retry with PAYMENT-SIGNATURE');
+  const paymentSignature = toBase64({
     x402Version: 2,
-    scheme: requirement.scheme || 'exact',
-    network: 'base',
+    accepted: requirement,
     payload: { authorization, signature },
   });
   const res2 = await fetch(`${apiBase}${apiPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Payment': xPayment,
+      'PAYMENT-SIGNATURE': paymentSignature,
     },
     body: JSON.stringify(chatBody),
   });
@@ -410,7 +416,7 @@ async function runBaseScenario(): Promise<ScenarioResult> {
   if (clsInfo.note) console.log(`  note: ${clsInfo.note}`);
 
   return {
-    network: 'base',
+    network: BASE_NETWORK,
     wallet: wallet.address,
     requirement,
     firstStatus: res1.status,
@@ -418,7 +424,7 @@ async function runBaseScenario(): Promise<ScenarioResult> {
     content,
     traceId: clsInfo.traceId,
     txHash: clsInfo.txHash,
-    explorerLink: clsInfo.txHash ? getExplorerLink('base', clsInfo.txHash) : null,
+    explorerLink: clsInfo.txHash ? getExplorerLink(BASE_NETWORK, clsInfo.txHash) : null,
     note: clsInfo.note,
   };
 }
@@ -437,9 +443,11 @@ async function runSkaleScenario(): Promise<ScenarioResult> {
   console.log('Step 1: POST without auth');
   const { res: res1, body: body1, startedAfterMs, chatBody } = await request402(marker);
   console.log(`  Status: ${res1.status}`);
-  const requirement = await getRequirement('skale', body1);
+  const requirement = await getRequirement(SKALE_NETWORK, body1);
   const decimals = requirement.extra?.decimals ?? 6;
-  console.log(`  amount: ${requirement.maxAmountRequired} (${formatAmount(requirement.maxAmountRequired, decimals)} USDC.e)`);
+  const amount = requirement.amount ?? requirement.maxAmountRequired;
+  if (!amount) throw new Error(`Payment requirement for ${SKALE_NETWORK} has no amount.`);
+  console.log(`  amount: ${amount} (${formatAmount(amount, decimals)} USDC.e)`);
   console.log(`  payTo: ${requirement.payTo}`);
   console.log(`  asset: ${requirement.asset}`);
 
@@ -448,7 +456,7 @@ async function runSkaleScenario(): Promise<ScenarioResult> {
   const authorization = {
     from: wallet.address,
     to: requirement.payTo,
-    value: BigInt(requirement.maxAmountRequired).toString(),
+    value: BigInt(amount).toString(),
     validAfter: String(now),
     validBefore: String(now + (requirement.maxTimeoutSeconds || 120)),
     nonce: randomNonce32(),
@@ -472,18 +480,17 @@ async function runSkaleScenario(): Promise<ScenarioResult> {
   const signature = await wallet.signTypedData(domain, types, authorization);
   console.log(`  signature: ${signature.slice(0, 18)}...${signature.slice(-10)}`);
 
-  console.log('Step 3: Retry with X-Payment');
-  const xPayment = toBase64({
+  console.log('Step 3: Retry with PAYMENT-SIGNATURE');
+  const paymentSignature = toBase64({
     x402Version: 2,
-    scheme: requirement.scheme || 'exact',
-    network: 'skale',
+    accepted: requirement,
     payload: { authorization, signature },
   });
   const res2 = await fetch(`${apiBase}${apiPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Payment': xPayment,
+      'PAYMENT-SIGNATURE': paymentSignature,
     },
     body: JSON.stringify(chatBody),
   });
@@ -499,7 +506,7 @@ async function runSkaleScenario(): Promise<ScenarioResult> {
   if (clsInfo.note) console.log(`  note: ${clsInfo.note}`);
 
   return {
-    network: 'skale',
+    network: SKALE_NETWORK,
     wallet: wallet.address,
     requirement,
     firstStatus: res1.status,
@@ -507,7 +514,7 @@ async function runSkaleScenario(): Promise<ScenarioResult> {
     content,
     traceId: clsInfo.traceId,
     txHash: clsInfo.txHash,
-    explorerLink: clsInfo.txHash ? getExplorerLink('skale', clsInfo.txHash) : null,
+    explorerLink: clsInfo.txHash ? getExplorerLink(SKALE_NETWORK, clsInfo.txHash) : null,
     note: clsInfo.note,
   };
 }
@@ -526,8 +533,10 @@ async function runSolanaScenario(): Promise<ScenarioResult> {
   console.log('Step 1: POST without auth');
   const { res: res1, body: body1, startedAfterMs, chatBody } = await request402(marker);
   console.log(`  Status: ${res1.status}`);
-  const requirement = await getRequirement('solana', body1);
-  console.log(`  amount: ${requirement.maxAmountRequired} (${formatAmount(requirement.maxAmountRequired)} USDC)`);
+  const requirement = await getRequirement(SOLANA_NETWORK, body1);
+  const amount = requirement.amount ?? requirement.maxAmountRequired;
+  if (!amount) throw new Error(`Payment requirement for ${SOLANA_NETWORK} has no amount.`);
+  console.log(`  amount: ${amount} (${formatAmount(amount)} USDC)`);
   console.log(`  payTo: ${requirement.payTo}`);
   console.log(`  asset: ${requirement.asset}`);
 
@@ -543,13 +552,13 @@ async function runSolanaScenario(): Promise<ScenarioResult> {
   const envelope = await signSolanaPayment(requirement, solanaWallet, solanaRpc);
   console.log(`  serialized transaction: ${'transaction' in envelope.payload ? 'ready' : '(missing)'}`);
 
-  console.log('Step 3: Retry with X-Payment');
-  const xPayment = toBase64(envelope);
+  console.log('Step 3: Retry with PAYMENT-SIGNATURE');
+  const paymentSignature = toBase64(envelope);
   const res2 = await fetch(`${apiBase}${apiPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Payment': xPayment,
+      'PAYMENT-SIGNATURE': paymentSignature,
     },
     body: JSON.stringify(chatBody),
   });
@@ -565,7 +574,7 @@ async function runSolanaScenario(): Promise<ScenarioResult> {
   if (clsInfo.note) console.log(`  note: ${clsInfo.note}`);
 
   return {
-    network: 'solana',
+    network: SOLANA_NETWORK,
     wallet: payer.publicKey.toBase58(),
     requirement,
     firstStatus: res1.status,
@@ -573,7 +582,7 @@ async function runSolanaScenario(): Promise<ScenarioResult> {
     content,
     traceId: clsInfo.traceId,
     txHash: clsInfo.txHash,
-    explorerLink: clsInfo.txHash ? getExplorerLink('solana', clsInfo.txHash) : null,
+    explorerLink: clsInfo.txHash ? getExplorerLink(SOLANA_NETWORK, clsInfo.txHash) : null,
     note: clsInfo.note,
   };
 }

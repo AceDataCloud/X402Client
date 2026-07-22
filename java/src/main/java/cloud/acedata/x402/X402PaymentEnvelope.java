@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The pre-base64 representation of an {@code X-Payment} header.
+ * The pre-base64 representation of a {@code PAYMENT-SIGNATURE} header.
  *
  * <p>Mirrors {@code X402PaymentEnvelope} in the TypeScript package. The {@link #payload()}
  * map is serialized verbatim to JSON by {@link X402PaymentHandler}, so the signer

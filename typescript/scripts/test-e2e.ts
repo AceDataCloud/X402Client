@@ -2,7 +2,7 @@
  * X402 E2E test script.
  *
  * Step 1: Send request without auth → expect 402 + accepts[]
- * Step 2: (Manual) Sign with wallet and retry with X-Payment header
+ * Step 2: (Manual) Sign with wallet and retry with PAYMENT-SIGNATURE header
  *
  * Usage:
  *   node --loader ts-node/esm scripts/test-e2e.ts
@@ -40,7 +40,7 @@ async function testStep1_Get402() {
     if (Array.isArray(accepts) && accepts.length > 0) {
       console.log(`✅ ${accepts.length} payment requirement(s):`);
       for (const a of accepts) {
-        console.log(`   - network: ${a.network}, amount: ${a.maxAmountRequired}, payTo: ${a.payTo}`);
+        console.log(`   - network: ${a.network}, amount: ${a.amount ?? a.maxAmountRequired}, payTo: ${a.payTo}`);
       }
     } else {
       console.log('❌ No accepts[] in 402 response');

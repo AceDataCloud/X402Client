@@ -19,8 +19,8 @@ describe('EVM exact payment', () => {
     };
     const requirement: PaymentRequirement = {
       scheme: 'exact',
-      network: 'base',
-      maxAmountRequired: '952',
+      network: 'eip155:8453',
+      amount: '952',
       maxTimeoutSeconds: 120,
       resource: '/serp/google',
       description: 'test',
