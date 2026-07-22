@@ -3,7 +3,7 @@
 > X402 payment protocol client for AceDataCloud APIs.
 > Plug-in for the [`acedatacloud`](https://pypi.org/project/acedatacloud/) SDK.
 
-Pay-per-request with USDC — no API key, no account, no session. When an AceDataCloud API returns `402 Payment Required`, this package signs the payment envelope and returns it as an `X-Payment` header; the SDK retries transparently.
+Pay-per-request with USDC — no API key, no account, no session. When an AceDataCloud API returns `402 Payment Required`, this package signs the payment envelope and returns it as a `PAYMENT-SIGNATURE` header; the SDK retries transparently.
 
 - 🟦 **Base** — USDC (ERC-20) via EIP-3009 `TransferWithAuthorization`
 - 🟪 **Solana** — USDC (SPL) via signed `TransferChecked`
@@ -38,6 +38,10 @@ res = client.openai.chat.completions.create(
 )
 print(res.choices[0].message.content)
 ```
+
+The handler accepts `base`, `skale`, and `solana` as configuration aliases.
+Wire requirements use canonical CAIP-2 IDs: `eip155:8453`,
+`eip155:1187947933`, and `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
 
 ### Solana
 
@@ -75,15 +79,18 @@ client = AsyncAceDataCloud(
 
 ## Low-level signing
 
-If you need to produce an `X-Payment` envelope without going through the SDK:
+If you need to produce a `PAYMENT-SIGNATURE` envelope without going through the SDK:
 
 ```python
 from acedatacloud_x402 import sign_evm_payment, sign_solana_payment
 
 envelope = sign_evm_payment(requirement, evm_signer)          # dict
 envelope = sign_solana_payment(requirement, solana_signer)    # dict
-# base64-encode json(envelope) → X-Payment header value
+# base64-encode json(envelope) → PAYMENT-SIGNATURE header value
 ```
+
+The signers already return the canonical v2
+`{ "x402Version": 2, "accepted": requirement, "payload": ... }` envelope.
 
 ## Metered billing — the `upto` scheme
 

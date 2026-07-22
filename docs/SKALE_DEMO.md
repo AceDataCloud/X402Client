@@ -17,8 +17,8 @@ should expect to see the same shape when you reproduce it.
 | Step | What you do | What the audience sees |
 | --- | --- | --- |
 | 1 | `curl` an AceDataCloud API with **no auth header** | `402 Payment Required` + a list of `accepts[]` payment requirements (Base / SKALE / Solana) |
-| 2 | Sign an EIP-3009 `TransferWithAuthorization` for the SKALE entry | A base64 `X-Payment` envelope; **no on-chain broadcast yet** |
-| 3 | Replay the same request with `X-Payment` | `200 OK` + the actual API result (GPT completion, Suno tracks, Midjourney image, ...) |
+| 2 | Sign an EIP-3009 `TransferWithAuthorization` for the SKALE entry | A base64 `PAYMENT-SIGNATURE` envelope; **no on-chain broadcast yet** |
+| 3 | Replay the same request with `PAYMENT-SIGNATURE` | `200 OK` + the actual API result (GPT completion, Suno tracks, Midjourney image, ...) |
 | 4 | Open the SKALE block explorer | The USDC transfer from the demo wallet to AceDataCloud, settled by our facilitator — gas free |
 
 The whole thing fits on one slide: **HTTP-native per-request micropayments, no
@@ -48,14 +48,15 @@ Show the README diagram or just say it out loud:
 │  (PlatformGateway)      │
 └────────────┬────────────┘
              │ 2. 402 Payment Required
-             │    accepts: [base, skale, solana]
+             │    accepts: [eip155:8453, eip155:1187947933,
+             │              solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp]
              ▼
 ┌─────────────────────────┐
 │  Client signs EIP-3009  │   ← this is the only thing the
 │  TransferWithAuth       │     x402-client library does
 └────────────┬────────────┘
              │ 3. POST /openai/chat/completions
-             │    X-Payment: <base64 envelope>
+             │    PAYMENT-SIGNATURE: <base64 envelope>
              ▼
 ┌─────────────────────────┐      ┌──────────────────────────┐
 │  x402.acedata.cloud     │ ───▶ │ facilitator.acedata.cloud│
@@ -142,24 +143,24 @@ content-type: application/json
   "accepts": [
     {
       "scheme": "exact",
-      "network": "base",
-      "maxAmountRequired": "20568",
+      "network": "eip155:8453",
+      "amount": "20568",
       "payTo": "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7",
       "asset":  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "extra":  { "name": "USD Coin", "version": "2", "chainId": 8453, ... }
     },
     {
       "scheme": "exact",
-      "network": "skale",
-      "maxAmountRequired": "95215",
+      "network": "eip155:1187947933",
+      "amount": "95215",
       "payTo": "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7",
       "asset":  "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
       "extra":  { "name": "USD Coin", "version": "2", "chainId": 1187947933, ... }
     },
     {
       "scheme": "exact",
-      "network": "solana",
-      "maxAmountRequired": "95215",
+      "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "amount": "95215",
       ...
     }
   ]
@@ -168,7 +169,7 @@ content-type: application/json
 
 What to point out on stage:
 
-- `maxAmountRequired` is in **base units** (USDC has 6 decimals → `95215` =
+- `amount` is in **base units** (USDC has 6 decimals → `95215` =
   `0.095215 USDC` ≈ $0.095). Different endpoints have different prices; chat
   completions happens to be priced the same on SKALE and Solana here.
 - The same call returns **three networks**. The client (or the user) picks one.
@@ -204,20 +205,21 @@ so you can read every line in `scripts/test-skale-e2e.ts`):
    can show a tight before/after delta and constrain the post-run log scan).
 3. Send the same `POST` from Step 1 (path / body come from `TEST_API_PATH` /
    `TEST_BODY` env vars, defaulting to Suno), expect `402`, find the entry
-   where `network === 'skale'`. Print the full requirement + signed envelope
+  where `network === 'eip155:1187947933'`. Print the full requirement + signed envelope
    so the audience can read every field.
 4. Build an EIP-712 `TransferWithAuthorization` payload:
    - `from` = wallet address
    - `to` = `payTo` from the 402 response
-   - `value` = `maxAmountRequired`
+   - `value` = `amount ?? maxAmountRequired` (`maxAmountRequired` is accepted
+     only as a deprecated compatibility fallback)
    - `validAfter / validBefore` = now / now + maxTimeoutSeconds
    - `nonce` = 32 random bytes (replay protection — the USDC contract enforces
      each `(from, nonce)` pair as single-use)
 5. `wallet.signTypedData(domain, types, authorization)` → 65-byte signature.
    The domain pulls `name / version / chainId / verifyingContract` straight
    from the 402 `extra` block, so the client never has to hard-code anything.
-6. Wrap into the x402 envelope, base64 it, drop it into the `X-Payment` header,
-   replay the request.
+6. Build `{x402Version: 2, accepted: requirement, payload}`, base64 it, drop it
+  into the `PAYMENT-SIGNATURE` header, and replay the request.
 7. After the API returns `200`, scan SKALE for the `AuthorizationUsed(authorizer,
    nonce)` event with both topics indexed against the wallet + envelope nonce.
    That uniquely identifies the settlement tx, so the script prints the hash,
@@ -255,16 +257,16 @@ HTTP response:
   < x-kong-response-latency: 50
   <
   < {"x402Version": 2, "accepts": [
-        {"scheme": "exact", "network": "base",   "maxAmountRequired": "95215", ...},
-        {"scheme": "exact", "network": "solana", "maxAmountRequired": "95215", ...},
-        {"scheme": "exact", "network": "skale",  "maxAmountRequired": "95215",
+        {"scheme": "exact", "network": "eip155:8453", "amount": "95215", ...},
+        {"scheme": "exact", "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "amount": "95215", ...},
+        {"scheme": "exact", "network": "eip155:1187947933", "amount": "95215",
           "payTo": "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7",
           "asset": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
           "extra": {"name": "Bridged USDC (SKALE Bridge)", "version": "2",
                     "chainId": 1187947933, "verifyingContract": "0x85889c..."}}],
       "error": "Payment Required"}
 
-accepts[]: base, solana, skale
+accepts[]: eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp, eip155:1187947933
 Selected SKALE payment requirement:
   scheme:            exact
   amount:            95215 (0.095215 USDC)
@@ -280,7 +282,7 @@ SKALE head block: 1751581
 Wallet USDC balance before: 9.244115 USDC
 
 --- Step 2: Sign EIP-712 authorization ---
-Signed in 2 ms.  X-Payment header is 636 bytes.
+Signed in 2 ms.  PAYMENT-SIGNATURE header is 636 bytes.
 Signed envelope (decoded):
   domain:
     name:              "Bridged USDC (SKALE Bridge)"
@@ -296,12 +298,12 @@ Signed envelope (decoded):
     nonce:       0xab3d6439eb8e1a555722c145b0af83b0520d18026c9c4208f1686486df74906c
   signature:   0x3ac74ebf28…523ad146cd1b  (130/2 hex chars)
 
---- Step 3: Retry /openai/chat/completions with X-Payment ---
+--- Step 3: Retry /openai/chat/completions with PAYMENT-SIGNATURE ---
 HTTP request:
   > (paid retry)
   > POST https://x402.acedata.cloud/openai/chat/completions
   > Content-Type: application/json
-  > X-Payment: eyJ4NDAyVmVyc2lvbiI6Miwic2NoZW1l…YWQxNDZjZDFiIn19  (636 bytes base64, decoded above)
+  > PAYMENT-SIGNATURE: <636-byte base64 canonical v2 envelope>
   > Content-Length: 84
   >
   > {"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hi in 10 words."}]}
@@ -350,14 +352,14 @@ Things to point out while the script is running:
 - Each HTTP exchange is dumped **request-line + every header + body** with `>`
   for outgoing and `<` for incoming. There is **nothing hidden on the wire** —
   on the unauthenticated probe the only header we send is `Content-Type`, and
-  on the paid retry the only added header is `X-Payment`. No Authorization, no
+  on the paid retry the only added header is `PAYMENT-SIGNATURE`. No Authorization, no
   cookie, no API key.
 - On the 200 response, `via: kong/2.5.1` + `x-kong-proxy-latency` / `x-kong-upstream-latency`
   show that this is a real production gateway hop, not a fixture.
 - The **402 round-trip** is `518 ms`. The **EIP-712 signature** is computed
   locally in `2 ms`. The big number (`9819 ms`) is OpenAI itself — the payment
   loop adds well under half a second.
-- `X-Payment` shows up in the request log as the abbreviated base64 (the
+- `PAYMENT-SIGNATURE` shows up in the request log as the abbreviated base64 (the
   full envelope is already pretty-printed in Step 2, so we don't dump 636
   bytes of base64 a second time).
 - `validBefore = validAfter + maxTimeoutSeconds` (1 hour for this endpoint) —
@@ -365,7 +367,7 @@ Things to point out while the script is running:
   expires. The user is never on the hook for a payment that didn't deliver an
   API result.
 - The script ends with **the actual settlement tx hash**, the matched
-  `Transfer` event amount (which equals `maxAmountRequired` exactly — you only
+  `Transfer` event amount (which equals `amount` exactly — you only
   pay what was quoted), and the closing balance proving the `0.095215 USDC`
   delta. Click the explorer URL on stage to land the punchline.
 
@@ -383,7 +385,7 @@ Things to point out while the script is running:
 The script already printed the settlement tx hash + a direct explorer link in
 Step 4 of its output. Click that link on stage. You'll see the USDC `Transfer`
 event matching the demo wallet (`0xd047…CC1C`) sending exactly the
-`maxAmountRequired` to AceDataCloud's collection address (`0x4F0E…cEE7`).
+`amount` to AceDataCloud's collection address (`0x4F0E…cEE7`).
 
 If you'd rather show the wallet history instead of a single tx, the wallet
 page works too:
@@ -402,7 +404,7 @@ The previously verified historical settlements (also in the
 
 Talking points:
 
-- The on-chain `Transfer` value equals `maxAmountRequired` from the 402 —
+- The on-chain `Transfer` value equals `amount` from the 402 —
   exactly. The facilitator can never pull more than what the user signed for.
 - SKALE Base is **gas-free** — the chain distributes sFUEL automatically, so
   neither the user nor the facilitator pays gas. That's what makes
@@ -440,7 +442,7 @@ single-use. After the facilitator settles once, the same envelope is dead
 on-chain.
 
 **"What stops the server from charging me twice?"** The `validBefore` window is
-short (default 120s) and the price is bounded by `maxAmountRequired` in the
+short (default 120s) and the price is bounded by `amount` in the
 signed payload. The facilitator can't pull more, can't pull later, can't reuse
 the nonce.
 

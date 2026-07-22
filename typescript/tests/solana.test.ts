@@ -9,8 +9,8 @@ const FEE_PAYER = '3SPm6qbgsDkj24MuR8Ss4sH97fziqyCiqFKDyeVU2igq';
 function requirement(): PaymentRequirement {
   return {
     scheme: 'exact',
-    network: 'solana',
-    maxAmountRequired: '952',
+    network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    amount: '952',
     maxTimeoutSeconds: 3600,
     resource: '/serp/google',
     description: 'test',

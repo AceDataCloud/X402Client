@@ -3,7 +3,7 @@
 > X402 payment protocol client for AceDataCloud APIs.
 > Pay per request with USDC — **no API key, no account, no session**.
 
-Every [AceDataCloud](https://platform.acedata.cloud) API that costs money (chat completions, image generation, video generation, music generation, web search, …) now speaks the [x402 protocol](https://x402.org). This package ships the only piece the SDK can't do by itself: signing an `X-Payment` header when the server returns `402 Payment Required`. It plugs straight into [`@acedatacloud/sdk`](https://github.com/AceDataCloud/SDK) as a `paymentHandler`.
+Every [AceDataCloud](https://platform.acedata.cloud) API that costs money (chat completions, image generation, video generation, music generation, web search, …) now speaks the [x402 protocol](https://x402.org). This package ships the only piece the SDK can't do by itself: signing a `PAYMENT-SIGNATURE` header when the server returns `402 Payment Required`. It plugs straight into [`@acedatacloud/sdk`](https://github.com/AceDataCloud/SDK) as a `paymentHandler`.
 
 - 🟦 **Base** — USDC (ERC-20). Two schemes:
   - `exact` (EIP-3009 `transferWithAuthorization`) for fixed-price endpoints
@@ -25,9 +25,9 @@ SDK call (no Bearer token)
                                                              │
                                               paymentHandler │ (this package)
                                                              ▼
-                                                    sign X-Payment envelope
+                                              sign PAYMENT-SIGNATURE envelope
                                                              │
-      ◀────────────── retry with X-Payment ──────────────────┘
+      ◀────────── retry with PAYMENT-SIGNATURE ──────────────┘
 200 OK (+ x402_tx hash in headers)
 ```
 
@@ -81,6 +81,9 @@ console.log(res.choices[0].message.content);
 
 > When `preferScheme` is omitted the handler picks whatever the server lists first.
 > Chat APIs advertise both `exact` and `upto`; image / video / music APIs currently advertise only `exact`.
+> The handler accepts `base`, `skale`, and `solana` as configuration aliases.
+> Wire requirements use canonical CAIP-2 IDs: `eip155:8453`,
+> `eip155:1187947933`, and `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
 
 #### One-time Permit2 approval (`upto` only)
 
@@ -146,7 +149,7 @@ Every AceDataCloud endpoint the SDK exposes (`openai.chat`, `images`, `audio`, `
 
 ## Low-level signing
 
-If you need to produce an `X-Payment` envelope outside the SDK — for example in a custom fetch wrapper, tests, or an agent framework — the raw signing primitives are exported directly:
+If you need to produce a `PAYMENT-SIGNATURE` envelope outside the SDK — for example in a custom fetch wrapper, tests, or an agent framework — the raw signing primitives are exported directly:
 
 ```ts
 import {
@@ -166,6 +169,10 @@ const uptoEnvelope = await signEVMUptoPayment(req, evmProvider, evmAddress);
 
 const header = btoa(JSON.stringify(uptoEnvelope));
 ```
+
+Send `header` as the `PAYMENT-SIGNATURE` request header. The signing primitives
+already return the canonical v2 `{ x402Version, accepted, payload }` envelope;
+do not wrap their output in another `{ scheme, network, payload }` object.
 
 The live e2e scripts under `scripts/` use these low-level entry points to settle real USDC on chain. For application code, prefer the SDK path above.
 
@@ -202,7 +209,7 @@ Each script:
 1. Sends `POST /openai/chat/completions` with no auth.
 2. Parses the returned `402`.
 3. Signs the payment envelope.
-4. Retries with `X-Payment`.
+4. Retries with `PAYMENT-SIGNATURE`.
 5. Prints the trace ID, chain tx hash, and the final chat response.
 
 ---
@@ -244,8 +251,8 @@ The handler does **not** hardcode AceDataCloud prices. For any x402-enabled API,
 {
   "accepts": [
     {
-      "network": "base",
-      "maxAmountRequired": "95215",
+      "network": "eip155:8453",
+      "amount": "95215",
       "payTo": "...",
       "asset": "..."
     }
@@ -256,10 +263,10 @@ The handler does **not** hardcode AceDataCloud prices. For any x402-enabled API,
 That means:
 
 - price is determined server-side by the API path, model, and request body
-- different APIs can return different `maxAmountRequired`
+- different APIs can return different `amount` values
 - the client signs exactly what the server asks for
 
-If you want to preview the price for another API without paying yet, send the same request once without Bearer auth and without `X-Payment`, then inspect the returned `accepts` list.
+If you want to preview the price for another API without paying yet, send the same request once without Bearer auth and without `PAYMENT-SIGNATURE`, then inspect the returned `accepts` list.
 
 At the time of writing, **121 of 122 public APIs have x402 pricing configured** — the only exception is the free `/fish/voices` listing.
 

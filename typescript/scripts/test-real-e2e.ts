@@ -1,7 +1,7 @@
 /**
  * Real E2E test: X402 payment flow with actual wallet signing.
  *
- * Flow: POST without auth → 402 → EIP-712 sign → X-Payment header → retry
+ * Flow: POST without auth → 402 → EIP-712 sign → PAYMENT-SIGNATURE header → retry
  *
  * Required env: X402B_BASE_PAYER_PRIVATE_KEY
  * Loaded from (in order): process.env, ../../.claude/.env, ../../PlatformBackend/.env
@@ -10,6 +10,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Wallet } from 'ethers';
+
+const BASE_NETWORK = 'eip155:8453';
 
 function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;
@@ -47,7 +49,8 @@ const PRIVATE_KEY = rawKey.startsWith('0x') ? rawKey : `0x${rawKey}`;
 interface PaymentRequirement {
   scheme: string;
   network: string;
-  maxAmountRequired: string;
+  amount?: string;
+  maxAmountRequired?: string;
   maxTimeoutSeconds: number;
   resource: string;
   description: string;
@@ -86,13 +89,17 @@ async function main() {
   }
 
   const body402 = await res1.json() as { accepts: PaymentRequirement[] };
-  const baseReq = body402.accepts.find((a: PaymentRequirement) => a.network === 'base');
+  const baseReq = body402.accepts.find((a: PaymentRequirement) => a.network === BASE_NETWORK);
   if (!baseReq) {
-    console.log('ERROR: No base network in 402 response');
+    console.log(`ERROR: No ${BASE_NETWORK} network in 402 response`);
     process.exit(1);
   }
-  console.log(`✅ Got 402 with base payment requirement`);
-  console.log(`   Amount: ${baseReq.maxAmountRequired} (${Number(baseReq.maxAmountRequired) / 1e6} USDC)`);
+  const amount = baseReq.amount ?? baseReq.maxAmountRequired;
+  if (!amount) {
+    throw new Error(`Payment requirement for ${BASE_NETWORK} has no amount.`);
+  }
+  console.log(`✅ Got 402 with ${BASE_NETWORK} payment requirement`);
+  console.log(`   Amount: ${amount} (${Number(amount) / 1e6} USDC)`);
   console.log(`   PayTo: ${baseReq.payTo}`);
   console.log(`   Asset: ${baseReq.asset}\n`);
 
@@ -104,7 +111,7 @@ async function main() {
   const authorization = {
     from: wallet.address,
     to: baseReq.payTo,
-    value: BigInt(baseReq.maxAmountRequired).toString(),
+    value: BigInt(amount).toString(),
     validAfter: String(now),
     validBefore: String(now + maxTimeout),
     nonce: randomNonce32(),
@@ -132,27 +139,26 @@ async function main() {
   console.log(`✅ Signed EIP-712 message`);
   console.log(`   Signature: ${signature.slice(0, 20)}...${signature.slice(-10)}`);
 
-  // Step 3: Build X-Payment header
+  // Step 3: Build PAYMENT-SIGNATURE header
   const envelope = {
     x402Version: 2,
-    scheme: 'exact',
-    network: 'base',
+    accepted: baseReq,
     payload: {
       authorization,
       signature,
     },
   };
 
-  const xPayment = btoa(JSON.stringify(envelope));
-  console.log(`   X-Payment header length: ${xPayment.length} chars\n`);
+  const paymentSignature = btoa(JSON.stringify(envelope));
+  console.log(`   PAYMENT-SIGNATURE header length: ${paymentSignature.length} chars\n`);
 
-  // Step 4: Retry with X-Payment header
-  console.log(`--- Step 3: Retry POST ${TEST_API_PATH} with X-Payment ---`);
+  // Step 4: Retry with PAYMENT-SIGNATURE header
+  console.log(`--- Step 3: Retry POST ${TEST_API_PATH} with PAYMENT-SIGNATURE ---`);
   const res2 = await fetch(`${API_BASE}${TEST_API_PATH}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Payment': xPayment,
+      'PAYMENT-SIGNATURE': paymentSignature,
     },
     body: JSON.stringify(TEST_BODY),
   });
