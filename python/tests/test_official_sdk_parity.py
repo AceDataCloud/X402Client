@@ -109,12 +109,9 @@ def test_exact_signature_recovers_to_the_signer():
     assert recovered.lower() == signer.address.lower(), "EIP-712 signature must recover to signer"
 
 
-def test_known_divergence_timeout_default_is_documented():
-    """X402Client defaults maxTimeoutSeconds to 120; the official SDK uses 3600.
-    With an explicit maxTimeoutSeconds this is moot, but a requirement WITHOUT it
-    diverges. This test documents the gap so a future SDK-wrapping migration
-    knows to reconcile it — it is not a correctness failure (validBefore is
-    echoed and reconstructed by the facilitator)."""
+def test_exact_default_timeout_matches_official_3600s():
+    """With no maxTimeoutSeconds, X402Client now defaults to 3600s — matching the
+    official x402 SDK's ExactEvmScheme and this package's own upto path."""
     import time
 
     req = {k: v for k, v in BASE_REQUIREMENT.items() if k != "maxTimeoutSeconds"}
@@ -123,9 +120,8 @@ def test_known_divergence_timeout_default_is_documented():
     env = sign_evm_payment(req, signer)
     auth = env["payload"]["authorization"]
     assert auth["validAfter"] == "0"
-    # validBefore = now + default_timeout. X402Client default is 120s; official is 3600s.
     default_timeout = int(auth["validBefore"]) - before
-    assert 118 <= default_timeout <= 122, (
-        f"X402Client exact default timeout is {default_timeout}s (expected ~120s). "
-        "If reconciling with the official SDK, note the official default is 3600s."
+    assert 3598 <= default_timeout <= 3602, (
+        f"X402Client exact default timeout is {default_timeout}s (expected ~3600s "
+        "to match the official SDK)."
     )

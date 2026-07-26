@@ -106,7 +106,9 @@ def sign_evm_payment(
 ) -> X402PaymentEnvelope:
     """Sign an EIP-712 ``TransferWithAuthorization`` envelope for an EVM chain."""
     now = int(time.time())
-    max_timeout = int(requirements.get("maxTimeoutSeconds") or 120)
+    # Default matches the official x402 SDK (ExactEvmScheme: 3600s) and this
+    # package's own upto path; the server's 402 normally supplies the value.
+    max_timeout = int(requirements.get("maxTimeoutSeconds") or 3600)
     value = str(int(requirements.get("amount") or requirements.get("maxAmountRequired") or "0"))
 
     authorization: dict[str, str] = {

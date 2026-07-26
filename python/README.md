@@ -9,6 +9,25 @@ Pay-per-request with USDC — no API key, no account, no session. When an AceDat
 - 🟪 **Solana** — USDC (SPL) via signed `TransferChecked`
 - 🟨 **SKALE** — USDC (bridged) via EIP-3009
 
+## Standards compliance (official x402 **v2**)
+
+This client speaks the current **x402 v2** wire protocol — the same one the
+[official `x402` SDK](https://pypi.org/project/x402/) implements:
+
+- payment is sent in the **`PAYMENT-SIGNATURE`** header (v2), **not** the
+  legacy v1 payment header;
+- the envelope is `{ "x402Version": 2, "accepted": <requirement>, "payload": … }`;
+- networks are canonical **CAIP-2** ids (`eip155:8453`, `eip155:1187947933`,
+  `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`);
+- EVM `exact` signs an EIP-3009 `TransferWithAuthorization` with `validAfter=0`
+  and a `validBefore` default of **3600s**, matching the official SDK.
+
+A CI parity guard (`tests/test_official_sdk_parity.py`) pins the emitted
+envelope against the official SDK v2.16: it asserts the envelope shape, the
+authorization field set, and that the EIP-712 signature **recovers to the
+signer** — so any drift from the spec fails the build. The `@acedatacloud/x402-client`
+TypeScript package emits the identical v2 envelope.
+
 ## Install
 
 ```bash

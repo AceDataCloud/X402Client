@@ -75,7 +75,9 @@ export async function signEVMPayment(
   address: string
 ): Promise<X402PaymentEnvelope> {
   const now = Math.floor(Date.now() / 1000);
-  const maxTimeout = requirements.maxTimeoutSeconds || 120;
+  // Default matches the official x402 SDK (3600s) and this package's upto path;
+  // the server's 402 normally supplies the value.
+  const maxTimeout = requirements.maxTimeoutSeconds || 3600;
   const value = BigInt(requirements.amount ?? requirements.maxAmountRequired ?? '0').toString();
 
   const authorization: EVMAuthorization = {
