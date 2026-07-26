@@ -12,6 +12,8 @@ This is a monorepo with one package per language, each designed as a **plugin** 
 
 The SDK does all the API work (task polling, SSE streaming, retries, typed errors). This package only contributes one thing: signing a `PAYMENT-SIGNATURE` header when the server returns `402 Payment Required`.
 
+> **Standards:** speaks the current **x402 v2** wire protocol (`PAYMENT-SIGNATURE` header, `{ x402Version: 2, accepted, payload }` envelope, CAIP-2 networks) — the same as the official [`x402`](https://pypi.org/project/x402/) SDK. The legacy v1 payment header is **not** used. A CI parity guard pins the emitted envelope against the official SDK so it can't drift.
+
 - 🟦 **Base** — USDC (ERC-20) via EIP-3009 `TransferWithAuthorization` (`exact` scheme) **and** Permit2 `PermitWitnessTransferFrom` (`upto` scheme — pay-only-what-you-used metering for chat / streaming APIs)
 - 🟪 **Solana** — USDC (SPL) via signed `TransferChecked`
 - 🟨 **SKALE** — USDC (bridged) via EIP-3009
