@@ -34,6 +34,10 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.10",
   "web3>=6.20",
+  # Official x402 SDK — reference for the envelope-parity guard
+  # (tests/test_official_sdk_parity.py). The guard fails if our hand-rolled
+  # signing drifts from the spec, de-risking a future migration to wrap it.
+  "x402>=2.16",
 ]
 cli = [
   "web3>=6.20",
