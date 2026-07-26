@@ -60,6 +60,11 @@ include = ["src/", "README.md", "pyproject.toml"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Newer ruff versions scan Markdown code blocks under `format --check` but can
+# only reformat them in experimental preview mode — so a README snippet flags as
+# "would be reformatted" with no non-preview way to fix it. Docs aren't Python;
+# exclude them from formatting.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM"]
