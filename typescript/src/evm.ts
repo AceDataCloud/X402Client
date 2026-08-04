@@ -46,9 +46,28 @@ function randomPermit2Nonce(): string {
   return value.toString();
 }
 
+/** EIP-712 domain fields for token domains (name + version + chainId + verifyingContract). */
+const EIP712_DOMAIN_FULL = [
+  { name: 'name', type: 'string' },
+  { name: 'version', type: 'string' },
+  { name: 'chainId', type: 'uint256' },
+  { name: 'verifyingContract', type: 'address' },
+] as const;
+
+/** Permit2's domain deliberately omits `version` — adding one changes the digest. */
+const EIP712_DOMAIN_NO_VERSION = [
+  { name: 'name', type: 'string' },
+  { name: 'chainId', type: 'uint256' },
+  { name: 'verifyingContract', type: 'address' },
+] as const;
+
 function buildTypedData(requirements: PaymentRequirement, authorization: EVMAuthorization) {
   return {
     types: {
+      // MetaMask silently injects `EIP712Domain: []` when it is absent, which
+      // makes the wallet sign an empty-domain digest the facilitator can never
+      // recover. Declaring it explicitly is mandatory.
+      EIP712Domain: EIP712_DOMAIN_FULL,
       TransferWithAuthorization: [
         { name: 'from', type: 'address' },
         { name: 'to', type: 'address' },
@@ -142,6 +161,7 @@ export function buildUptoTypedData(
 
   return {
     types: {
+      EIP712Domain: EIP712_DOMAIN_NO_VERSION,
       PermitWitnessTransferFrom: [
         { name: 'permitted', type: 'TokenPermissions' },
         { name: 'spender', type: 'address' },

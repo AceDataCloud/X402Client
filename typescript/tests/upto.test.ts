@@ -64,11 +64,14 @@ function makeWalletProvider(privateKey: string): { provider: EVMProvider; addres
         primaryType: string;
         message: Record<string, unknown>;
       };
-      // ethers' signer expects the types object WITHOUT EIP712Domain — it adds
-      // its own. Our typed data omits it, so we can pass directly.
-      const { primaryType, ...rest } = typed;
+      // The wire payload MUST declare EIP712Domain: MetaMask silently substitutes
+      // an empty domain when it is absent, producing an unrecoverable signature.
+      expect(typed.types.EIP712Domain).toBeDefined();
+      // ethers derives the domain itself and rejects an explicit EIP712Domain.
+      const { primaryType, types, ...rest } = typed;
       void primaryType;
-      return wallet.signTypedData(rest.domain, rest.types, rest.message);
+      const { EIP712Domain: _domainTypes, ...structTypes } = types;
+      return wallet.signTypedData(rest.domain, structTypes, rest.message);
     },
   };
   return { provider, address: wallet.address };
@@ -158,11 +161,14 @@ describe('upto envelope', () => {
       validAfter: auth.witness.validAfter,
     });
 
-    const recovered = verifyTypedData(typed.domain, typed.types, typed.message, signature);
+    // ethers derives the domain itself and rejects an explicit EIP712Domain.
+    const { EIP712Domain: _domainTypes, ...structTypes } = typed.types;
+
+    const recovered = verifyTypedData(typed.domain, structTypes, typed.message, signature);
     expect(recovered.toLowerCase()).toBe(TEST_ADDRESS.toLowerCase());
 
     // And the digest is reproducible.
-    const digest = TypedDataEncoder.hash(typed.domain, typed.types, typed.message);
+    const digest = TypedDataEncoder.hash(typed.domain, structTypes, typed.message);
     expect(digest.startsWith('0x')).toBe(true);
     expect(digest.length).toBe(66);
   });
