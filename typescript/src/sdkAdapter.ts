@@ -35,6 +35,8 @@ export interface X402PaymentHandlerOptions {
     | 'solana'
     | 'base'
     | 'skale'
+    | 'avalanche'
+    | 'eip155:43114'
     | 'optimism'
     | 'eip155:10'
     | 'polygon'
@@ -98,6 +100,7 @@ function selectRequirement(
 
 const NETWORK_ALIASES: Record<string, string> = {
   base: 'eip155:8453',
+  avalanche: 'eip155:43114',
   optimism: 'eip155:10',
   polygon: 'eip155:137',
   arbitrum: 'eip155:42161',
