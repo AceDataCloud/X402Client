@@ -35,6 +35,8 @@ export interface X402PaymentHandlerOptions {
     | 'solana'
     | 'base'
     | 'skale'
+    | 'arbitrum'
+    | 'eip155:42161'
     | 'eip155:8453'
     | 'eip155:1187947933'
     | 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
@@ -92,6 +94,7 @@ function selectRequirement(
 
 const NETWORK_ALIASES: Record<string, string> = {
   base: 'eip155:8453',
+  arbitrum: 'eip155:42161',
   skale: 'eip155:1187947933',
   solana: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
 };
