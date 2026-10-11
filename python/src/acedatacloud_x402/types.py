@@ -87,6 +87,8 @@ Network = Literal[
     "solana",
     "base",
     "skale",
+    "optimism",
+    "eip155:10",
     "polygon",
     "eip155:137",
     "arbitrum",
