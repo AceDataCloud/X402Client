@@ -6,6 +6,7 @@ import type { EVMProvider, PaymentRequirement } from "../src/types.js";
 
 const networks = [
   ["arbitrum", 42161, "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"],
+  ["polygon", 137, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"],
 ] as const;
 
 for (const [alias, chainId, asset] of networks) {
