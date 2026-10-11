@@ -20,6 +20,7 @@ from .types import Network, PaymentRequirement, X402PaymentEnvelope
 PaymentHandlerResult = dict[str, dict[str, str]]
 NETWORK_ALIASES = {
     "base": "eip155:8453",
+    "avalanche": "eip155:43114",
     "optimism": "eip155:10",
     "polygon": "eip155:137",
     "arbitrum": "eip155:42161",
