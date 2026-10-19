@@ -61,6 +61,18 @@ const EIP712_DOMAIN_NO_VERSION = [
   { name: 'verifyingContract', type: 'address' },
 ] as const;
 
+function exactChainId(requirements: PaymentRequirement): number {
+  const match = /^eip155:([1-9][0-9]*)$/.exec(requirements.network);
+  const chainId = match ? Number(match[1]) : requirements.extra?.chainId;
+  if (!Number.isSafeInteger(chainId) || !chainId || chainId < 1) {
+    throw new Error('EVM exact payments require a valid chain ID');
+  }
+  if (requirements.extra?.chainId !== undefined && requirements.extra.chainId !== chainId) {
+    throw new Error('Payment network and chainId disagree');
+  }
+  return chainId;
+}
+
 function buildTypedData(requirements: PaymentRequirement, authorization: EVMAuthorization) {
   return {
     types: {
@@ -81,7 +93,7 @@ function buildTypedData(requirements: PaymentRequirement, authorization: EVMAuth
     domain: {
       name: requirements.extra?.name || 'USD Coin',
       version: requirements.extra?.version || '2',
-      chainId: requirements.extra?.chainId || 8453,
+      chainId: exactChainId(requirements),
       verifyingContract: requirements.extra?.verifyingContract || requirements.asset,
     },
     message: authorization,

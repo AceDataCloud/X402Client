@@ -68,6 +68,21 @@ class EVMAccountSigner:
         return signed.signature.hex()
 
 
+def _exact_chain_id(requirements: PaymentRequirement) -> int:
+    extra = requirements.get("extra") or {}
+    network = requirements.get("network", "")
+    suffix = network.removeprefix("eip155:")
+    if network.startswith("eip155:") and suffix.isascii() and suffix.isdecimal():
+        chain_id = int(suffix)
+    else:
+        chain_id = extra.get("chainId")
+    if isinstance(chain_id, bool) or not isinstance(chain_id, int) or not 0 < chain_id <= 2**53 - 1:
+        raise ValueError("EVM exact payments require a valid chain ID")
+    if "chainId" in extra and extra["chainId"] != chain_id:
+        raise ValueError("Payment network and chainId disagree")
+    return chain_id
+
+
 def _build_typed_data(
     requirements: PaymentRequirement, authorization: dict[str, str]
 ) -> dict[str, Any]:
@@ -94,7 +109,7 @@ def _build_typed_data(
         "domain": {
             "name": extra.get("name") or "USD Coin",
             "version": extra.get("version") or "2",
-            "chainId": extra.get("chainId") or 8453,
+            "chainId": _exact_chain_id(requirements),
             "verifyingContract": extra.get("verifyingContract") or asset,
         },
         "message": authorization,

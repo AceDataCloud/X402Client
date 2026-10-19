@@ -232,3 +232,17 @@ cd python && pip install -e ".[dev]" && pytest && ruff check .
 ## License
 
 MIT © AceDataCloud
+
+
+## Additional EVM networks
+
+| Network | Alias | CAIP-2 | Native USDC |
+| --- | --- | --- | --- |
+| Arbitrum One | `arbitrum` | `eip155:42161` | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+
+Use either the alias or CAIP-2 identifier as `network` in the TypeScript or
+Python payment handler. These networks support native USDC `exact` payments;
+availability is determined by the server's live `accepts`, not the SDK list.
+The signer derives the EIP-712 chain ID from CAIP-2 if `extra.chainId` is absent
+and rejects a conflicting chain ID. A signature for one chain is invalid on
+another. Use an EIP-1193 wallet with support for the selected chain.
