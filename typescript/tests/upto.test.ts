@@ -118,7 +118,7 @@ describe('upto envelope', () => {
     const { provider, address } = makeWalletProvider(TEST_PRIVATE_KEY);
     const before = Math.floor(Date.now() / 1000);
     const envelope = await signEVMUptoPayment(
-      uptoRequirement({ network: 'eip155:1187947933' }),
+      uptoRequirement(),
       provider,
       address
     );

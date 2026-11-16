@@ -27,13 +27,11 @@ from . import (
 USDC_BY_NETWORK: dict[str, str] = {
     "base": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    "skale": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
 }
 
 DEFAULT_RPC: dict[str, str] = {
     "base": "https://mainnet.base.org",
     "base-sepolia": "https://sepolia.base.org",
-    "skale": "https://mainnet.skalenodes.com/v1/elated-tan-skat",
 }
 
 

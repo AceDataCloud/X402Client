@@ -10,7 +10,6 @@ class X402TypesTest {
     @Test
     void networkWireNamesAreCanonical() {
         assertEquals("eip155:8453", X402Types.Network.BASE.wire());
-        assertEquals("eip155:1187947933", X402Types.Network.SKALE.wire());
         assertEquals("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", X402Types.Network.SOLANA.wire());
     }
 

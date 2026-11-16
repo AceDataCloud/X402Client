@@ -21,7 +21,6 @@ PaymentHandlerResult = dict[str, dict[str, str]]
 NETWORK_ALIASES = {
     "base": "eip155:8453",
     "arbitrum": "eip155:42161",
-    "skale": "eip155:1187947933",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
 }
 
@@ -64,8 +63,8 @@ def create_x402_payment_handler(
 
     Args:
         network: Target payment network. The ``"solana"``, ``"base"``, and
-            ``"skale"`` aliases map to canonical CAIP-2 wire network IDs.
-        evm_signer: Required for ``base`` / ``skale``.
+            ``"arbitrum"`` aliases map to canonical CAIP-2 wire network IDs.
+        evm_signer: Required for EVM networks.
         solana_signer: Required for ``solana``.
         rpc_url: Optional Solana RPC override.
         prefer_scheme: When the server offers multiple schemes for the chosen
@@ -79,6 +78,8 @@ def create_x402_payment_handler(
         :class:`acedatacloud.AsyncAceDataCloud`.
     """
     canonical_network = NETWORK_ALIASES.get(network, network)
+    if canonical_network not in NETWORK_ALIASES.values():
+        raise ValueError(f"Unsupported payment network: {network}")
     is_solana = canonical_network.startswith("solana:")
     is_evm = canonical_network.startswith("eip155:")
     if is_solana and solana_signer is None:

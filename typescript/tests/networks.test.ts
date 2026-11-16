@@ -73,3 +73,9 @@ for (const [alias, chainId, asset] of networks) {
     ).rejects.toThrow("disagree");
   });
 }
+
+it("rejects unsupported networks before requesting a wallet signature", () => {
+  expect(() =>
+    createX402PaymentHandler({ network: "eip155:999999999" as any })
+  ).toThrow("Unsupported payment network");
+});

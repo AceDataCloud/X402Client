@@ -9,7 +9,6 @@ import bs58 from 'bs58';
 import { signSolanaPayment } from '../src/solana.ts';
 
 const BASE_NETWORK = 'eip155:8453';
-const SKALE_NETWORK = 'eip155:1187947933';
 const SOLANA_NETWORK = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
 
 interface PaymentRequirement {
@@ -133,7 +132,6 @@ function formatAmount(amount: string, decimals = 6): string {
 function getExplorerLink(network: string, txHash: string): string | null {
   if (!txHash) return null;
   if (network === BASE_NETWORK) return `https://basescan.org/tx/${txHash}`;
-  if (network === SKALE_NETWORK) return `https://skale-base-explorer.skalenodes.com/tx/${txHash}`;
   if (network === SOLANA_NETWORK) return `https://explorer.solana.com/tx/${txHash}?cluster=mainnet-beta`;
   return null;
 }
@@ -429,96 +427,6 @@ async function runBaseScenario(): Promise<ScenarioResult> {
   };
 }
 
-async function runSkaleScenario(): Promise<ScenarioResult> {
-  const privateKey = process.env.SKALE_BASE_PRIVATE_KEY?.trim();
-  if (!privateKey) {
-    throw new Error('SKALE_BASE_PRIVATE_KEY is missing.');
-  }
-  const wallet = new Wallet(privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`);
-  const marker = `skale-${Date.now()}`;
-
-  console.log('\n=== SKALE ===');
-  console.log(`Wallet: ${wallet.address}`);
-
-  console.log('Step 1: POST without auth');
-  const { res: res1, body: body1, startedAfterMs, chatBody } = await request402(marker);
-  console.log(`  Status: ${res1.status}`);
-  const requirement = await getRequirement(SKALE_NETWORK, body1);
-  const decimals = requirement.extra?.decimals ?? 6;
-  const amount = requirement.amount ?? requirement.maxAmountRequired;
-  if (!amount) throw new Error(`Payment requirement for ${SKALE_NETWORK} has no amount.`);
-  console.log(`  amount: ${amount} (${formatAmount(amount, decimals)} USDC.e)`);
-  console.log(`  payTo: ${requirement.payTo}`);
-  console.log(`  asset: ${requirement.asset}`);
-
-  console.log('Step 2: Sign EIP-712 authorization');
-  const now = Math.floor(Date.now() / 1000);
-  const authorization = {
-    from: wallet.address,
-    to: requirement.payTo,
-    value: BigInt(amount).toString(),
-    validAfter: String(now),
-    validBefore: String(now + (requirement.maxTimeoutSeconds || 120)),
-    nonce: randomNonce32(),
-  };
-  const domain = {
-    name: requirement.extra?.name || 'Bridged USDC',
-    version: requirement.extra?.version || '1',
-    chainId: Number(requirement.extra?.chainId ?? 1187947933),
-    verifyingContract: requirement.extra?.verifyingContract || requirement.asset,
-  };
-  const types = {
-    TransferWithAuthorization: [
-      { name: 'from', type: 'address' },
-      { name: 'to', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'validAfter', type: 'uint256' },
-      { name: 'validBefore', type: 'uint256' },
-      { name: 'nonce', type: 'bytes32' },
-    ],
-  };
-  const signature = await wallet.signTypedData(domain, types, authorization);
-  console.log(`  signature: ${signature.slice(0, 18)}...${signature.slice(-10)}`);
-
-  console.log('Step 3: Retry with PAYMENT-SIGNATURE');
-  const paymentSignature = toBase64({
-    x402Version: 2,
-    accepted: requirement,
-    payload: { authorization, signature },
-  });
-  const res2 = await fetch(`${apiBase}${apiPath}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'PAYMENT-SIGNATURE': paymentSignature,
-    },
-    body: JSON.stringify(chatBody),
-  });
-  const body2 = await parseBody(res2) as { choices?: Array<{ message?: { content?: string } }> } | null;
-  const content = body2?.choices?.[0]?.message?.content ?? null;
-  console.log(`  Status: ${res2.status}`);
-  console.log(`  Content: ${content}`);
-
-  console.log('Step 4: Query CLS for trace/tx');
-  const clsInfo = await waitForUsage(wallet.address, startedAfterMs);
-  console.log(`  trace_id: ${clsInfo.traceId ?? '(missing)'}`);
-  console.log(`  tx_hash: ${clsInfo.txHash ?? '(missing)'}`);
-  if (clsInfo.note) console.log(`  note: ${clsInfo.note}`);
-
-  return {
-    network: SKALE_NETWORK,
-    wallet: wallet.address,
-    requirement,
-    firstStatus: res1.status,
-    secondStatus: res2.status,
-    content,
-    traceId: clsInfo.traceId,
-    txHash: clsInfo.txHash,
-    explorerLink: clsInfo.txHash ? getExplorerLink(SKALE_NETWORK, clsInfo.txHash) : null,
-    note: clsInfo.note,
-  };
-}
-
 async function runSolanaScenario(): Promise<ScenarioResult> {
   const secret = process.env.X402B_SOLANA_PAYER_PRIVATE_KEY?.trim();
   if (!secret) {
@@ -606,12 +514,11 @@ async function main() {
   loadEnvFile(resolve(repoRoot, 'PlatformBackend/.env'));
 
   console.log(`API: ${apiBase}${apiPath}`);
-  console.log('Testing three x402 chat payment scenarios with CLS follow-up.');
+  console.log('Testing two x402 chat payment scenarios with CLS follow-up.');
 
   const results = [
     await runBaseScenario(),
     await runSolanaScenario(),
-    await runSkaleScenario(),
   ];
 
   console.log('\n================ FINAL SUMMARY ================');

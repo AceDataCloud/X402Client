@@ -16,7 +16,6 @@ The SDK does all the API work (task polling, SSE streaming, retries, typed error
 
 - 🟦 **Base** — USDC (ERC-20) via EIP-3009 `TransferWithAuthorization` (`exact` scheme) **and** Permit2 `PermitWitnessTransferFrom` (`upto` scheme — pay-only-what-you-used metering for chat / streaming APIs)
 - 🟪 **Solana** — USDC (SPL) via signed `TransferChecked`
-- 🟨 **SKALE** — USDC (bridged) via EIP-3009
 
 All settle through our production facilitator at **`https://facilitator.acedata.cloud`** ([source](https://github.com/AceDataCloud/FacilitatorX402)).
 
@@ -49,7 +48,7 @@ SDK call (no Bearer token)
 
 ## Quick start (TypeScript)
 
-Fixed-price endpoint (`exact` scheme — Base, Solana, SKALE):
+Fixed-price endpoint (`exact` scheme — Base, Solana):
 
 ```ts
 import { AceDataCloud } from '@acedatacloud/sdk';
@@ -96,9 +95,9 @@ const client = new AceDataCloud({
 
 See **[typescript/README.md](./typescript/README.md)** for the full guide.
 
-The handler accepts the convenient `base`, `skale`, and `solana` configuration
+The handler accepts the convenient `base`, `arbitrum`, and `solana` configuration
 aliases shown above. On the x402 v2 wire, payment requirements always use
-canonical CAIP-2 network IDs: `eip155:8453`, `eip155:1187947933`, and
+canonical CAIP-2 network IDs: `eip155:8453`, `eip155:42161`, and
 `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
 
 ## Quick start (Python)
@@ -154,8 +153,6 @@ Live on-chain settlements through `https://facilitator.acedata.cloud`, run from
 | ---------- | --------------------------- | --------- | ------------- |
 | 🟦 Base    | `POST /openai/chat/completions` | 0.020568 | [`0xa1697ee4…7c2708`](https://basescan.org/tx/0xa1697ee44d6c8d14c8a26c9a41b507fb718bac85c9153396b3e23b565a7c2708) |
 | 🟦 Base    | `POST /midjourney/imagine` (turbo) | 0.025708 | [`0x2d161b04…84539b2`](https://basescan.org/tx/0x2d161b04589aad026e6c575509f1867bbeeba6bff6f17064b1a423dd084539b2) |
-| 🟨 SKALE   | `POST /openai/chat/completions` | 0.020568 | [`0x621b361a…7b12979`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x621b361ad78e6bb6f910dba603a4267bca92ca8748894011cced803227b12979) |
-| 🟨 SKALE   | `POST /midjourney/imagine` (turbo) | 0.025708 | [`0x0e66f646…6b827d3`](https://elated-tan-skat.explorer.mainnet.skalenodes.com/tx/0x0e66f646bdfbf2e29ca8bc3bc19f252aa6109d8cf7aff1ab6836111e56b827d3) |
 | 🟪 Solana  | `POST /openai/chat/completions` | 0.095215 | [`4fsVAukg…D1Gd3t`](https://solscan.io/tx/4fsVAukgeFpGezcmu84xu4gYm1ANoAzgked8zhV78g2ffFL9AMpNP64Q1QkLoHtxgLuaPXcACBPZiLykwKD1Gd3t) |
 | 🟪 Solana  | `POST /midjourney/imagine` (turbo) | 0.115215 | [`5G438pwj…WUeBj`](https://solscan.io/tx/5G438pwjGBPjekkZZgHsqKgkV43nxCLoqMoue7J6aHhRVCYhtnR45EE2SzffnsbQMVxceb8BhdZFA3jTECNWUeBj) |
 
@@ -175,19 +172,17 @@ Payer wallet [`0x5d4f08D5…fA41B105`](https://basescan.org/address/0x5d4f08D5c2
 
 For a step-by-step walkthrough of the upto flow (including the one-time
 `approve(Permit2, ∞)` and the deferred `/record` settle), see
-[**docs/UPTO_DEMO.md**](./docs/UPTO_DEMO.md). For the `exact` SKALE flow, see
-[**docs/SKALE_DEMO.md**](./docs/SKALE_DEMO.md).
+[**docs/UPTO_DEMO.md**](./docs/UPTO_DEMO.md).
 
 Reproduce with the live e2e scripts (need a funded test wallet for each chain):
 
 ```bash
 cd typescript
 
-# Base (exact) / SKALE — set X402B_BASE_PAYER_PRIVATE_KEY or SKALE_BASE_PRIVATE_KEY
+# Base (exact) — set X402B_BASE_PAYER_PRIVATE_KEY
 TEST_API_PATH='/openai/chat/completions' \
   TEST_BODY='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],"max_tokens":10}' \
   npx tsx scripts/test-real-e2e.ts        # Base (exact)
-npx tsx scripts/test-skale-e2e.ts         # SKALE
 
 # Base (upto) — one-time Permit2 approval, then metered chat call
 npx tsx scripts/approve-permit2.ts --network base --token 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
@@ -205,7 +200,7 @@ npx tsx scripts/test-solana-e2e.ts
 .
 ├── typescript/   # @acedatacloud/x402-client — published to npm
 │   ├── src/
-│   ├── scripts/  # live on-chain e2e tests (Base, Solana, SKALE)
+│   ├── scripts/  # live on-chain e2e tests (Base, Solana)
 │   └── package.json
 ├── python/       # acedatacloud-x402 — published to PyPI
 │   ├── src/acedatacloud_x402/

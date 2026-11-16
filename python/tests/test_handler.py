@@ -17,9 +17,9 @@ def test_base_requires_evm_signer():
         create_x402_payment_handler(network="base")
 
 
-def test_skale_requires_evm_signer():
-    with pytest.raises(ValueError):
-        create_x402_payment_handler(network="skale")
+def test_unsupported_network_is_rejected():
+    with pytest.raises(ValueError, match="Unsupported payment network"):
+        create_x402_payment_handler(network="eip155:999999999")
 
 
 def test_network_mismatch_raises():
