@@ -78,7 +78,7 @@ def test_upto_envelope_shape():
 def test_upto_default_valid_after_tolerates_chain_clock_lag():
     signer = EVMAccountSigner.from_private_key(TEST_PRIVATE_KEY)
     before = int(time.time())
-    envelope = sign_evm_upto_payment(_upto_requirement(network="eip155:1187947933"), signer)
+    envelope = sign_evm_upto_payment(_upto_requirement(), signer)
     after = int(time.time())
     auth = envelope["payload"]["permit2Authorization"]
 

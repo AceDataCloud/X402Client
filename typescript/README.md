@@ -9,9 +9,8 @@ Every [AceDataCloud](https://platform.acedata.cloud) API that costs money (chat 
   - `exact` (EIP-3009 `transferWithAuthorization`) for fixed-price endpoints
   - `upto` (Uniswap Permit2 `PermitWitnessTransferFrom`) for token-metered chat APIs — sign once over a ceiling, the facilitator settles the actual cost
 - 🟪 **Solana** — USDC (SPL) via signed transfer
-- 🟨 **SKALE** — USDC (bridged) via EIP-3009
 
-All three networks settle through our production facilitator at **`https://facilitator.acedata.cloud`** ([source](https://github.com/AceDataCloud/FacilitatorX402)).
+These networks settle through our production facilitator at **`https://facilitator.acedata.cloud`** ([source](https://github.com/AceDataCloud/FacilitatorX402)).
 
 ---
 
@@ -40,7 +39,7 @@ The SDK keeps doing everything it already does — task polling, SSE streaming, 
 ```bash
 npm install @acedatacloud/sdk @acedatacloud/x402-client
 # extra peers depending on the chain(s) you use:
-npm install ethers            # Base / SKALE
+npm install ethers            # Base
 npm install @solana/web3.js   # Solana
 ```
 
@@ -54,7 +53,7 @@ npm install @acedatacloud/sdk github:AceDataCloud/X402Client
 
 ## Quick start
 
-### Base or SKALE (EVM)
+### Base (EVM)
 
 ```ts
 import { AceDataCloud } from '@acedatacloud/sdk';
@@ -64,7 +63,7 @@ const client = new AceDataCloud({
   // No apiToken — per-request on-chain payment.
   baseURL: 'https://x402.acedata.cloud',
   paymentHandler: createX402PaymentHandler({
-    network: 'base',                // or 'skale'
+    network: 'base',
     evmProvider: window.ethereum,   // any EIP-1193 provider works
     evmAddress: '0xYourAddress...',
     preferScheme: 'upto',           // for chat APIs; falls back to 'exact' if upto isn't offered
@@ -81,9 +80,9 @@ console.log(res.choices[0].message.content);
 
 > When `preferScheme` is omitted the handler picks whatever the server lists first.
 > Chat APIs advertise both `exact` and `upto`; image / video / music APIs currently advertise only `exact`.
-> The handler accepts `base`, `skale`, and `solana` as configuration aliases.
+> The handler accepts `base`, `arbitrum`, and `solana` as configuration aliases.
 > Wire requirements use canonical CAIP-2 IDs: `eip155:8453`,
-> `eip155:1187947933`, and `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
+> `eip155:42161`, and `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
 
 #### One-time Permit2 approval (`upto` only)
 
@@ -141,7 +140,6 @@ Every AceDataCloud endpoint the SDK exposes (`openai.chat`, `images`, `audio`, `
 1. **Fund a wallet with USDC** on the network you want to use:
    - Base — [USDC on Base](https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
    - Solana — [USDC on Solana](https://explorer.solana.com/address/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v)
-   - SKALE — bridged USDC on SKALE Europa
 2. A few cents of USDC is enough for most single requests (prices are listed at [platform.acedata.cloud](https://platform.acedata.cloud)).
 3. Construct the handler with whatever wallet primitive you have: a browser provider, a Node `ethers.Wallet`, `@solana/web3.js` keypair, etc.
 
@@ -161,7 +159,7 @@ import {
 // Solana
 const solEnvelope = await signSolanaPayment(req, solanaWallet);
 
-// Base / SKALE — exact scheme (fixed price)
+// Base — exact scheme (fixed price)
 const evmEnvelope = await signEVMPayment(req, evmProvider, evmAddress);
 
 // Base — upto scheme (metered)
@@ -199,9 +197,6 @@ node --experimental-strip-types scripts/test-upto-e2e.ts
 export SOLANA_TEST_PRIVATE_KEY=...
 node --experimental-strip-types scripts/test-solana-e2e.ts
 
-# SKALE — EVM private key with funded bridged USDC
-export SKALE_BASE_PRIVATE_KEY=0x...
-node --experimental-strip-types scripts/test-skale-e2e.ts
 ```
 
 Each script:
@@ -237,7 +232,6 @@ Previous `exact`-scheme runs (`2026-04-19`):
 
 - **Base** — tx [`0x11313652…5327ec`](https://basescan.org/tx/0x11313652b99cbb07c62fa1125ab1a41dc3c14593efa349c7699bd1b7736327ec)
 - **Solana** — tx [`3qB25xsy…eBVzr`](https://explorer.solana.com/tx/3qB25xsyQ36eQsKqk5S57VQXJ1z9tG2rAytrS1tuKkC4NZkJAj2BfmqDdY34VvBabEjpJQwJ2MNXhN325VeeBVzr?cluster=mainnet-beta)
-- **SKALE** — tx [`0xc6c7affe…aae42e1`](https://skale-base-explorer.skalenodes.com/tx/0xc6c7affe2a0a2bb89306d4fdc4d84c8fb564533d52799b16361b891c1aae42e1)
 
 All chains live; all settlements flow through our own facilitator at `https://facilitator.acedata.cloud`.
 

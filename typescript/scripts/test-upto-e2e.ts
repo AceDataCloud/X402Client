@@ -9,7 +9,6 @@
  *
  * Prereqs:
  *   - Base: `X402B_BASE_PAYER_PRIVATE_KEY` in env (auto-loaded from `.claude/.env`)
- *   - SKALE: `SKALE_BASE_PRIVATE_KEY` in env
  *   - One-time `approvePermit2` already run for the payer + USDC + target chain
  *
  * Run: `cd typescript && npx tsx scripts/test-upto-e2e.ts`
@@ -23,7 +22,6 @@ import { signEVMUptoPayment } from '../src/index.js';
 import type { EVMProvider, PaymentRequirement } from '../src/index.js';
 
 const BASE_NETWORK = 'eip155:8453';
-const SKALE_NETWORK = 'eip155:1187947933';
 
 function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;
@@ -47,8 +45,8 @@ loadEnvFile(resolve(scriptDir, '../../../PlatformBackend/.env'));
 
 const API_BASE = process.env.API_BASE || 'https://x402.acedata.cloud';
 const NETWORK = process.env.X402_UPTO_NETWORK || BASE_NETWORK;
-if (![BASE_NETWORK, SKALE_NETWORK].includes(NETWORK)) {
-  console.error(`ERROR: X402_UPTO_NETWORK must be "${BASE_NETWORK}" or "${SKALE_NETWORK}", got ${NETWORK}`);
+if (NETWORK !== BASE_NETWORK) {
+  console.error(`ERROR: X402_UPTO_NETWORK must be "${BASE_NETWORK}", got ${NETWORK}`);
   process.exit(1);
 }
 const TEST_API_PATH = process.env.TEST_API_PATH || '/v1/chat/completions';
@@ -60,7 +58,7 @@ const TEST_BODY = process.env.TEST_BODY
       max_tokens: 40,
     };
 
-const keyEnvName = NETWORK === SKALE_NETWORK ? 'SKALE_BASE_PRIVATE_KEY' : 'X402B_BASE_PAYER_PRIVATE_KEY';
+const keyEnvName = 'X402B_BASE_PAYER_PRIVATE_KEY';
 const rawKey = process.env[keyEnvName]?.trim();
 if (!rawKey) {
   console.error(`ERROR: ${keyEnvName} is missing. Add it to .claude/.env or PlatformBackend/.env.`);

@@ -7,7 +7,6 @@ Pay-per-request with USDC — no API key, no account, no session. When an AceDat
 
 - 🟦 **Base** — USDC (ERC-20) via EIP-3009 `TransferWithAuthorization`
 - 🟪 **Solana** — USDC (SPL) via signed `TransferChecked`
-- 🟨 **SKALE** — USDC (bridged) via EIP-3009
 
 ## Standards compliance (official x402 **v2**)
 
@@ -17,7 +16,7 @@ This client speaks the current **x402 v2** wire protocol — the same one the
 - payment is sent in the **`PAYMENT-SIGNATURE`** header (v2), **not** the
   legacy v1 payment header;
 - the envelope is `{ "x402Version": 2, "accepted": <requirement>, "payload": … }`;
-- networks are canonical **CAIP-2** ids (`eip155:8453`, `eip155:1187947933`,
+- networks are canonical **CAIP-2** ids (`eip155:8453`, `eip155:42161`,
   `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`);
 - EVM `exact` signs an EIP-3009 `TransferWithAuthorization` with `validAfter=0`
   and a `validBefore` default of **3600s**, matching the official SDK.
@@ -36,7 +35,7 @@ pip install acedatacloud acedatacloud-x402
 
 ## Quick start
 
-### Base or SKALE (EVM)
+### Base (EVM)
 
 ```python
 from acedatacloud import AceDataCloud
@@ -45,7 +44,7 @@ from acedatacloud_x402 import create_x402_payment_handler, EVMAccountSigner
 client = AceDataCloud(
     base_url="https://x402.acedata.cloud",
     payment_handler=create_x402_payment_handler(
-        network="base",                         # or "skale"
+        network="base",
         evm_signer=EVMAccountSigner.from_private_key("0x..."),
     ),
 )
@@ -58,9 +57,9 @@ res = client.openai.chat.completions.create(
 print(res.choices[0].message.content)
 ```
 
-The handler accepts `base`, `skale`, and `solana` as configuration aliases.
+The handler accepts `base`, `arbitrum`, and `solana` as configuration aliases.
 Wire requirements use canonical CAIP-2 IDs: `eip155:8453`,
-`eip155:1187947933`, and `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
+`eip155:42161`, and `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
 
 ### Solana
 

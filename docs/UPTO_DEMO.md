@@ -18,7 +18,7 @@ below — you should expect the same shape when you reproduce it.
 
 ## Why `upto` (and how it differs from `exact`)
 
-The basic x402 dance is the same as the [SKALE / Base `exact` demo](./SKALE_DEMO.md):
+The basic x402 dance is the same as the Base `exact` flow:
 
 1. Client hits the API with no auth → server replies `402` + `accepts[]`.
 2. Client signs an envelope, retries with `PAYMENT-SIGNATURE`.
@@ -59,7 +59,7 @@ and the on-chain transfer is the truth.
 └────────────┬────────────┘
              │ 2. 402 Payment Required
              │    accepts: [exact-eip155:8453, upto-eip155:8453,
-             │              exact-eip155:1187947933, exact-solana:5eyk..., ...]
+             │              exact-solana:5eyk..., ...]
              ▼
 ┌─────────────────────────┐
 │  Client signs Permit2   │   ← this PR's signEVMUptoPayment /
@@ -226,7 +226,6 @@ content-type: application/json
          "proxyAddress":      "0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002",
          "facilitatorAddress":"0xd019238EAA8a9Ca13C5792Ca10B4029D6ce25708"
        }},
-    {"scheme": "exact", "network": "eip155:1187947933", "amount": "4760750", …},
     {"scheme": "exact", "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "amount": "4760750", …}
   ]
 }
@@ -419,9 +418,7 @@ gateway settle exactly what the LLM actually cost in a single transfer.
 
 **"Who pays the gas for the settle tx?"** The facilitator (AceDataCloud). On
 Base mainnet that's a few cents per call — folded into the gateway's spread.
-On SKALE / other gas-free chains we'd use the same approach with zero
-operating cost. (Today `upto` is Base only because Permit2 is best deployed
-on EVM L2s with cheap gas.)
+The `upto` flow described here uses Base mainnet.
 
 **"Why USDC and not USDT/DAI?"** Native USDC on Base is the most liquid
 stablecoin in the smart-account ecosystem, supports Permit2 universally, and
@@ -439,4 +436,4 @@ matches what the rest of the AceDataCloud x402 surface uses.
 - Facilitator source: [`AceDataCloud/FacilitatorX402`](https://github.com/AceDataCloud/FacilitatorX402)
 - Permit2 (Uniswap): [`Uniswap/permit2`](https://github.com/Uniswap/permit2) — canonical address [`0x000000000022D473…3aC78BA3`](https://basescan.org/address/0x000000000022D473030F116dDEE9F6B43aC78BA3)
 - X402UptoPermit2Proxy on Base: [`0x4020A4f3…CC240002`](https://basescan.org/address/0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002)
-- For the fixed-price counterpart, see [SKALE_DEMO.md](./SKALE_DEMO.md).
+- Fixed-price E2E script: [`typescript/scripts/test-real-e2e.ts`](../typescript/scripts/test-real-e2e.ts).

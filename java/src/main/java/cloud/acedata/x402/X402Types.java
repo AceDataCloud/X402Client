@@ -14,7 +14,6 @@ public final class X402Types {
     /** Supported payment networks. */
     public enum Network {
         BASE("eip155:8453"),
-        SKALE("eip155:1187947933"),
         SOLANA("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp");
 
         private final String wire;

@@ -9,7 +9,6 @@ const scriptsRoot = join(typescriptRoot, 'scripts');
 const publicDocuments = [
   join(repositoryRoot, 'README.md'),
   join(repositoryRoot, 'examples', 'README.md'),
-  join(repositoryRoot, 'docs', 'SKALE_DEMO.md'),
   join(repositoryRoot, 'docs', 'UPTO_DEMO.md'),
   join(repositoryRoot, 'java', 'src', 'main', 'java', 'cloud', 'acedata', 'x402', 'X402PaymentEnvelope.java'),
   join(repositoryRoot, 'python', 'README.md'),
@@ -36,8 +35,7 @@ describe('official v2 examples', () => {
     const content = readScripts();
 
     expect(content).toContain('eip155:8453');
-    expect(content).toContain('eip155:1187947933');
     expect(content).toContain('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp');
-    expect(content).not.toMatch(/\.network\s*===\s*['"](?:base|skale|solana)['"]/);
+    expect(content).not.toMatch(/\.network\s*===\s*['"](?:base|solana)['"]/);
   });
 });

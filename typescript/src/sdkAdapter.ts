@@ -34,19 +34,17 @@ export interface X402PaymentHandlerOptions {
   network:
     | 'solana'
     | 'base'
-    | 'skale'
     | 'arbitrum'
     | 'eip155:42161'
     | 'eip155:8453'
-    | 'eip155:1187947933'
     | 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
   /** Solana wallet adapter (required if network=solana). */
   solanaWallet?: SolanaWalletAdapter;
   /** Optional Solana RPC used only to fetch a recent blockhash. */
   solanaRpcUrl?: string;
-  /** EVM EIP-1193 provider (required if network=base/skale). */
+  /** EVM EIP-1193 provider (required if network is EVM). */
   evmProvider?: EVMProvider;
-  /** EVM account address (required if network=base/skale). */
+  /** EVM account address (required if network is EVM). */
   evmAddress?: string;
   /**
    * When the server offers multiple schemes for the chosen network, prefer
@@ -95,7 +93,6 @@ function selectRequirement(
 const NETWORK_ALIASES: Record<string, string> = {
   base: 'eip155:8453',
   arbitrum: 'eip155:42161',
-  skale: 'eip155:1187947933',
   solana: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
 };
 
@@ -109,6 +106,9 @@ export function createX402PaymentHandler(
   const { network, solanaWallet, solanaRpcUrl, evmProvider, evmAddress, preferScheme } = options;
 
   const canonicalNetwork = NETWORK_ALIASES[network] ?? network;
+  if (!Object.values(NETWORK_ALIASES).includes(canonicalNetwork)) {
+    throw new Error(`Unsupported payment network: ${network}`);
+  }
   const isSolana = canonicalNetwork.startsWith('solana:');
   const isEvm = canonicalNetwork.startsWith('eip155:');
 

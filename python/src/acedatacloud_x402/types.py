@@ -86,11 +86,9 @@ class X402PaymentEnvelope(TypedDict):
 Network = Literal[
     "solana",
     "base",
-    "skale",
     "arbitrum",
     "eip155:42161",
     "eip155:8453",
-    "eip155:1187947933",
     "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
 ]
 

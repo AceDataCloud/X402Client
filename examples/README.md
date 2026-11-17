@@ -19,7 +19,7 @@ pip install crewai                # crewai_paid_tools.py
 pip install mcp                   # mcp_x402_server.py
 ```
 
-Set a funded wallet key (Base USDC by default — swap `network` for `solana`/`skale`):
+Set a funded wallet key (Base USDC by default — swap `network` for `solana`/`arbitrum`):
 
 ```bash
 export X402_PRIVATE_KEY=0x...     # a wallet holding USDC on the chosen network
@@ -53,7 +53,7 @@ client = AceDataCloud(
 # cost USDC per call — no account, no API key.
 ```
 
-The handler accepts `base`, `skale`, and `solana` as configuration aliases;
+The handler accepts `base`, `arbitrum`, and `solana` as configuration aliases;
 x402 v2 requirements on the wire use canonical CAIP-2 network IDs.
 
 > These are illustrative examples, not a published package. Run them against a
